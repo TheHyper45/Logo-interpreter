@@ -15,7 +15,8 @@ add_executable(logo
                code/string.cpp
                code/debug.hpp
                code/debug.cpp
-               code/array_view.hpp)
+               code/array_view.hpp
+               code/heap_array.hpp)
 
 set_target_properties(logo PROPERTIES LINKER_LANGUAGE CXX)
 target_compile_definitions(logo PRIVATE "$<$<CONFIG:DEBUG>:DEBUG_BUILD>")

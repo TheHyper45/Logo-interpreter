@@ -34,6 +34,16 @@ namespace logo {
 	template<typename T,typename U>
 	Range(T,U) -> Range<std::common_type_t<T,U>>;
 
+	template<typename Lambda>
+	struct Deferred_Lambda {
+		Lambda lambda;
+		Deferred_Lambda(Lambda&& _lambda) : lambda(std::move(_lambda)) {}
+		~Deferred_Lambda() { lambda(); }
+	};
+#define LOGO_CONCAT_(X,Y) X##Y
+#define LOGO_CONCAT(X,Y) LOGO_CONCAT_(X,Y)
+#define defer logo::Deferred_Lambda LOGO_CONCAT(_lambda,__LINE__) =
+
 	template<typename T>
 	consteval std::size_t max_int_char_count() {
 		switch(sizeof(T)) {
