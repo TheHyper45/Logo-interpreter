@@ -110,6 +110,12 @@ namespace logo {
 		arg.value.string_view_v = value;
 		return arg;
 	}
+	String_Format_Arg make_string_format_arg(char value) {
+		String_Format_Arg arg{};
+		arg.type = String_Format_Arg::Type::Char;
+		arg.value.char_v = value;
+		return arg;
+	}
 
 	std::size_t _format_into(bool(*callback)(char32_t,const void*),const void* callback_arg,String_View format,Array_View<String_Format_Arg> args) {
 		std::size_t count = 0;
@@ -120,9 +126,9 @@ namespace logo {
 				const String_Format_Arg& arg = args[current_arg_index];
 				switch(arg.type) {
 					case String_Format_Arg::Type::Size_T: {
-						static constexpr auto buffer_size = logo::max_int_char_count<std::size_t>();
-						char buffer[buffer_size + 1]{};
-						int result = std::snprintf(buffer,buffer_size,"%zu",arg.value.size_t_v);
+						static constexpr auto Buffer_Size = logo::max_int_char_count<std::size_t>();
+						char buffer[Buffer_Size + 1]{};
+						int result = std::snprintf(buffer,Buffer_Size,"%zu",arg.value.size_t_v);
 						if(result < 0) return count;
 						for(auto i : Range(result)) {
 							if(!callback(buffer[i],callback_arg)) return count;
@@ -131,9 +137,9 @@ namespace logo {
 						break;
 					}
 					case String_Format_Arg::Type::Uint_Least_32_T: {
-						static constexpr auto buffer_size = logo::max_int_char_count<std::uint_least32_t>();
-						char buffer[buffer_size + 1]{};
-						int result = std::snprintf(buffer,buffer_size,"%" PRIuLEAST32,arg.value.uint_least32_t_v);
+						static constexpr auto Buffer_Size = logo::max_int_char_count<std::uint_least32_t>();
+						char buffer[Buffer_Size + 1]{};
+						int result = std::snprintf(buffer,Buffer_Size,"%" PRIuLEAST32,arg.value.uint_least32_t_v);
 						if(result < 0) return count;
 						for(auto i : Range(result)) {
 							if(!callback(buffer[i],callback_arg)) return count;
@@ -144,6 +150,17 @@ namespace logo {
 					case String_Format_Arg::Type::String_View: {
 						for(auto arg_c : arg.value.string_view_v) {
 							if(!callback(arg_c,callback_arg)) return count;
+							count += 1;
+						}
+						break;
+					}
+					case String_Format_Arg::Type::Char: {
+						static constexpr auto Buffer_Size = logo::max_int_char_count<char>();
+						char buffer[Buffer_Size + 1]{};
+						int result = std::snprintf(buffer,Buffer_Size,"%d",arg.value.char_v);
+						if(result < 0) return count;
+						for(auto i : Range(result)) {
+							if(!callback(buffer[i],callback_arg)) return count;
 							count += 1;
 						}
 						break;

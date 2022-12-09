@@ -2,6 +2,7 @@
 #define LOGO_UTILS_HPP
 
 #include <cstddef>
+#include <utility>
 #include <type_traits>
 
 namespace logo {
@@ -33,6 +34,14 @@ namespace logo {
 	Range(T) -> Range<T>;
 	template<typename T,typename U>
 	Range(T,U) -> Range<std::common_type_t<T,U>>;
+
+	template<typename T>
+	struct Option {
+		T value;
+		bool has_value;
+		Option() : value(),has_value() {}
+		Option(const T& _value) : value(_value),has_value(true) {}
+	};
 
 	template<typename Lambda>
 	struct Deferred_Lambda {

@@ -1,4 +1,3 @@
-#include <cstdio>
 #if defined(_WIN32) || defined(_WIN64) || defined(WIN32)
 	#define PLATFORM_WINDOWS
 	#define WIN32_LEAN_AND_MEAN
@@ -6,6 +5,8 @@
 	#include <Windows.h>
 	#undef near
 	#undef far
+#else
+	#include <unistd.h>
 #endif
 #include "debug.hpp"
 
@@ -48,16 +49,30 @@ namespace logo {
 	bool _print_stdout_char32_t(char32_t c) {
 		Array_String<sizeof(c)> code_point{};
 		code_point.append(c);
-		std::fputs("\x1B[38;5;15m",stdout);
-		std::fwrite(code_point.buffer,sizeof(char),code_point.byte_length,stdout);
+		String_View code = "\x1B[38;5;15m";
+#ifdef PLATFORM_WINDOWS
+		DWORD written_char_count = 0;
+		WriteConsoleA(GetStdHandle(STD_OUTPUT_HANDLE),code.begin_ptr,static_cast<DWORD>(code.length()),&written_char_count,nullptr);
+		WriteConsoleA(GetStdHandle(STD_OUTPUT_HANDLE),code_point.buffer,static_cast<DWORD>(code_point.byte_length),&written_char_count,nullptr);
+#else
+		write(STDOUT_FILENO,code.begin_ptr,code.length());
+		write(STDOUT_FILENO,code_point.buffer,code_point.byte_length);
+#endif
 		return true;
 	}
 
 	bool _print_stderr_char32_t(char32_t c) {
 		Array_String<sizeof(c)> code_point{};
 		code_point.append(c);
-		std::fputs("\x1B[38;5;9m",stderr);
-		std::fwrite(code_point.buffer,sizeof(char),code_point.byte_length,stderr);
+		String_View code = "\x1B[38;5;9m";
+#ifdef PLATFORM_WINDOWS
+		DWORD written_char_count = 0;
+		WriteConsoleA(GetStdHandle(STD_ERROR_HANDLE),code.begin_ptr,static_cast<DWORD>(code.length()),&written_char_count,nullptr);
+		WriteConsoleA(GetStdHandle(STD_ERROR_HANDLE),code_point.buffer,static_cast<DWORD>(code_point.byte_length),&written_char_count,nullptr);
+#else
+		write(STDERR_FILENO,code.begin_ptr,code.length());
+		write(STDERR_FILENO,code_point.buffer,code_point.byte_length);
+#endif
 		return true;
 	}
 

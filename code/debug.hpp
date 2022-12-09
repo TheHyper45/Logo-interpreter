@@ -28,7 +28,7 @@ namespace logo {
 		}
 	};
 	template<typename... Args>
-	Report_Error(String_View,Args...) -> Report_Error<Args...>;
+	Report_Error(String_View,Args&&...) -> Report_Error<Args...>;
 
 	[[nodiscard]] String_View get_reported_error();
 	void assert(bool condition,std::source_location loc = std::source_location::current());

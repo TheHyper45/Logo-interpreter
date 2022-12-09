@@ -69,12 +69,14 @@ namespace logo {
 		enum class Type {
 			Size_T,
 			Uint_Least_32_T,
-			String_View
+			String_View,
+			Char
 		};
 		union Value {
 			std::size_t size_t_v;
 			std::uint_least32_t uint_least32_t_v;
 			String_View string_view_v;
+			char char_v;
 		};
 		Type type;
 		Value value;
@@ -83,6 +85,7 @@ namespace logo {
 	[[nodiscard]] String_Format_Arg make_string_format_arg(std::size_t value);
 	[[nodiscard]] String_Format_Arg make_string_format_arg(std::uint_least32_t value);
 	[[nodiscard]] String_Format_Arg make_string_format_arg(String_View value);
+	[[nodiscard]] String_Format_Arg make_string_format_arg(char value);
 	template<std::size_t Count>
 	[[nodiscard]] String_Format_Arg make_string_format_arg(const Array_String<Count>& string) {
 		String_Format_Arg result{};
