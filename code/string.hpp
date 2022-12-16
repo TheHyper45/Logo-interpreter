@@ -6,9 +6,14 @@
 #include <cstdint>
 #include <type_traits>
 #include "array_view.hpp"
+#include "static_array.hpp"
 
 namespace logo {
 	static inline constexpr std::size_t String_Error = static_cast<std::size_t>(-1);
+
+	[[nodiscard]] char32_t make_code_point(Array_View<char> bytes);
+	[[nodiscard]] Static_Array<char,4> make_code_units(char32_t code_point);
+	[[nodiscard]] std::size_t code_point_byte_length(char32_t code_point);
 
 	struct String_Const_Iterator {
 		const char* ptr;
@@ -24,13 +29,14 @@ namespace logo {
 		String_View(const char* str,std::size_t str_len = String_Error);
 		template<std::size_t Count>
 		String_View(const char(&literal)[Count]) : begin_ptr(literal),end_ptr(literal + Count - 1) {}
-		[[nodiscard]] std::size_t length() const;
+		[[nodiscard]] std::size_t byte_length() const;
 		[[nodiscard]] String_Const_Iterator begin() const;
 		[[nodiscard]] String_Const_Iterator end() const;
 	};
 
 	bool append_char(char* string,std::size_t* byte_length,std::size_t byte_capacity,char32_t code_point);
 	bool append_string(char* string,std::size_t* byte_length,std::size_t byte_capacity,const char* to_append,std::size_t to_append_byte_length);
+	[[nodiscard]] bool compare_strings_equal(String_View string0,String_View string1);
 
 	template<std::size_t Capacity>
 	struct Array_String {
@@ -40,7 +46,7 @@ namespace logo {
 		[[nodiscard]] String_Const_Iterator begin() const { return {buffer}; }
 		[[nodiscard]] String_Const_Iterator end() const { return {buffer + byte_length}; }
 		bool append(char32_t code_point) { return logo::append_char(buffer,&byte_length,Capacity,code_point); }
-		bool append(String_View string) { return logo::append_string(buffer,&byte_length,Capacity,string.begin_ptr,string.length()); }
+		bool append(String_View string) { return logo::append_string(buffer,&byte_length,Capacity,string.begin_ptr,string.byte_length()); }
 	};
 
 	//Don't define this function.
@@ -66,17 +72,19 @@ namespace logo {
 	};
 
 	struct String_Format_Arg {
-		enum class Type {
+		enum struct Type {
 			Size_T,
 			Uint_Least_32_T,
 			String_View,
-			Char
+			Char,
+			Char32_T
 		};
 		union Value {
 			std::size_t size_t_v;
 			std::uint_least32_t uint_least32_t_v;
 			String_View string_view_v;
 			char char_v;
+			char32_t char32_t_v;
 		};
 		Type type;
 		Value value;
@@ -86,6 +94,7 @@ namespace logo {
 	[[nodiscard]] String_Format_Arg make_string_format_arg(std::uint_least32_t value);
 	[[nodiscard]] String_Format_Arg make_string_format_arg(String_View value);
 	[[nodiscard]] String_Format_Arg make_string_format_arg(char value);
+	[[nodiscard]] String_Format_Arg make_string_format_arg(char32_t value);
 	template<std::size_t Count>
 	[[nodiscard]] String_Format_Arg make_string_format_arg(const Array_String<Count>& string) {
 		String_Format_Arg result{};

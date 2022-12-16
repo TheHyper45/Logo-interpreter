@@ -5,6 +5,45 @@
 #include "string.hpp"
 
 namespace logo {
+	char32_t make_code_point(Array_View<char> bytes) {
+		if(bytes.length == 1)
+			return static_cast<char32_t>(bytes[0]);
+		else if(bytes.length == 2)
+			return static_cast<char32_t>(((bytes[0] & 0b00011111) << 6) | (bytes[1] & 0b00111111));
+		else if(bytes.length == 3)
+			return static_cast<char32_t>(((bytes[0] & 0b00001111) << 12) | ((bytes[1] & 0b00111111) << 6) | (bytes[2] & 0b00111111));
+		else if(bytes.length == 4)
+			return static_cast<char32_t>(((bytes[0] & 0b00000111) << 18) | ((bytes[1] & 0b00111111) << 12) | ((bytes[2] & 0b00111111) << 6) | (bytes[3] & 0b00111111));
+	}
+	Static_Array<char,4> make_code_units(char32_t code_point) {
+		Static_Array<char,4> bytes{};
+		if(code_point <= 0x7F) {
+			bytes.push_back(static_cast<char>(code_point));
+		}
+		else if(code_point <= 0x7FF) {
+			bytes.push_back(static_cast<char>(0b11000000 | ((code_point >> 6) & 0b00011111)));
+			bytes.push_back(static_cast<char>(0b10000000 | ((code_point >> 0) & 0b00111111)));
+		}
+		else if(code_point <= 0xFFFF) {
+			bytes.push_back(static_cast<char>(0b11100000 | ((code_point >> 12) & 0b00001111)));
+			bytes.push_back(static_cast<char>(0b10000000 | ((code_point >> 6) & 0b00111111)));
+			bytes.push_back(static_cast<char>(0b10000000 | ((code_point >> 0) & 0b00111111)));
+		}
+		else if(code_point <= 0x10FFFF) {
+			bytes.push_back(static_cast<char>(0b11110000 | ((code_point >> 18) & 0b00000111)));
+			bytes.push_back(static_cast<char>(0b10000000 | ((code_point >> 12) & 0b00111111)));
+			bytes.push_back(static_cast<char>(0b10000000 | ((code_point >> 6) & 0b00111111)));
+			bytes.push_back(static_cast<char>(0b10000000 | ((code_point >> 0) & 0b00111111)));
+		}
+		return bytes;
+	}
+	std::size_t code_point_byte_length(char32_t code_point) {
+		if(code_point <= 0x7F) return 1;
+		else if(code_point <= 0x7FF) return 2;
+		else if(code_point <= 0xFFFF) return 3;
+		else if(code_point <= 0x10FFFF) return 4;
+	}
+
 	String_Const_Iterator& String_Const_Iterator::operator++() {
 		char code_unit0 = *ptr;
 		if((code_unit0 & 0b10000000) == 0) ptr += 1;
@@ -45,39 +84,15 @@ namespace logo {
 		if(str_len == String_Error) str_len = std::strlen(str);
 		end_ptr = str + str_len;
 	}
-	std::size_t String_View::length() const { return static_cast<std::size_t>(end_ptr - begin_ptr); }
+	std::size_t String_View::byte_length() const { return static_cast<std::size_t>(end_ptr - begin_ptr); }
 	String_Const_Iterator String_View::begin() const { return {begin_ptr}; }
 	String_Const_Iterator String_View::end() const { return {end_ptr}; }
 
 	bool append_char(char* string,std::size_t* byte_length,std::size_t byte_capacity,char32_t code_point) {
-		char code_units[4]{};
-		std::size_t code_unit_count = 0;
-		if(code_point <= 0x7F) {
-			code_unit_count = 1;
-			code_units[0] = static_cast<char>(code_point);
-		}
-		else if(code_point <= 0x7FF) {
-			code_unit_count = 2;
-			code_units[1] = static_cast<char>(0b10000000 | ((code_point >> 0) & 0b00111111));
-			code_units[0] = static_cast<char>(0b11000000 | ((code_point >> 6) & 0b00011111));
-		}
-		else if(code_point <= 0xFFFF) {
-			code_unit_count = 3;
-			code_units[2] = static_cast<char>(0b10000000 | ((code_point >> 0) & 0b00111111));
-			code_units[1] = static_cast<char>(0b10000000 | ((code_point >> 6) & 0b00111111));
-			code_units[0] = static_cast<char>(0b11100000 | ((code_point >> 12) & 0b00001111));
-		}
-		else if(code_point <= 0x10FFFF) {
-			code_unit_count = 4;
-			code_units[3] = static_cast<char>(0b10000000 | ((code_point >> 0) & 0b00111111));
-			code_units[2] = static_cast<char>(0b10000000 | ((code_point >> 6) & 0b00111111));
-			code_units[1] = static_cast<char>(0b10000000 | ((code_point >> 12) & 0b00111111));
-			code_units[0] = static_cast<char>(0b11110000 | ((code_point >> 18) & 0b00000111));
-		}
-
-		if((*byte_length + code_unit_count) >= byte_capacity) return false;
-		std::memcpy(string + *byte_length,code_units,code_unit_count);
-		*byte_length += code_unit_count;
+		auto code_units = logo::make_code_units(code_point);
+		if((*byte_length + code_units.length) >= byte_capacity) return false;
+		std::memcpy(string + *byte_length,code_units.data,code_units.length);
+		*byte_length += code_units.length;
 		string[*byte_length] = '\0';
 		return true;
 	}
@@ -90,7 +105,17 @@ namespace logo {
 		return true;
 	}
 
-	Runtime_Format_String::Runtime_Format_String(String_View string) : buffer(string.begin_ptr),length(string.length()) {}
+	bool compare_strings_equal(String_View string0,String_View string1) {
+		if(string0.byte_length() != string1.byte_length()) return false;
+		for(std::size_t i = 0;i < string0.byte_length();i += 1) {
+			if(string0.begin_ptr[i] != string1.begin_ptr[i]) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	Runtime_Format_String::Runtime_Format_String(String_View string) : buffer(string.begin_ptr),length(string.byte_length()) {}
 
 	String_Format_Arg make_string_format_arg(std::size_t value) {
 		String_Format_Arg arg{};
@@ -114,6 +139,12 @@ namespace logo {
 		String_Format_Arg arg{};
 		arg.type = String_Format_Arg::Type::Char;
 		arg.value.char_v = value;
+		return arg;
+	}
+	String_Format_Arg make_string_format_arg(char32_t value) {
+		String_Format_Arg arg{};
+		arg.type = String_Format_Arg::Type::Char32_T;
+		arg.value.char32_t_v = value;
 		return arg;
 	}
 
@@ -150,7 +181,7 @@ namespace logo {
 					case String_Format_Arg::Type::String_View: {
 						for(auto arg_c : arg.value.string_view_v) {
 							if(!callback(arg_c,callback_arg)) return count;
-							count += 1;
+							count += logo::code_point_byte_length(arg_c);
 						}
 						break;
 					}
@@ -163,6 +194,11 @@ namespace logo {
 							if(!callback(buffer[i],callback_arg)) return count;
 							count += 1;
 						}
+						break;
+					}
+					case String_Format_Arg::Type::Char32_T: {
+						if(!callback(arg.value.char32_t_v,callback_arg)) return count;
+						count += logo::code_point_byte_length(arg.value.char32_t_v);
 						break;
 					}
 				}
