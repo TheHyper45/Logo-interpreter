@@ -4,41 +4,30 @@
 #include "static_array.hpp"
 
 namespace logo {
+	enum struct Lexing_Token_Status {
+		Not_Important,
+		Number,
+		Identifier,
+		String_Literal,
+		Comment,
+		Whitespace
+	};
 	static struct {
-		const char* begin;
-		const char* end;
-		std::size_t token_start_byte_index;
-		std::size_t token_byte_count;
 		Heap_Array<char> token_string_bytes;
+		std::size_t current_token_string_index;
 		char32_t last_token_code_point;
-		bool is_number;
-		bool is_string_literal;
-		bool is_comment;
-		bool ignore_first_quote;
+		Lexing_Token_Status token_status;
 		bool escape_next_character;
+		Heap_Array<Token> tokens;
 		std::size_t current_line_index;
-	} lexer{};
-
-	void init_lexer(const char* begin,const char* end) {
-		lexer.begin = begin;
-		lexer.end = end;
-		lexer.current_line_index = 1;
-	}
-
-	void term_lexer() {
-		lexer.token_string_bytes.destroy();
-	}
-
-	String_View Token::string_view() const {
-		return String_View(&lexer.token_string_bytes[start_index],length);
-	}
+		std::size_t current_token_index;
+	} lexer;
 
 	template<typename... Args>
-	Lexing_Status report_lexer_error(Format_String<std::type_identity_t<Args>...> format,Args&&... args) {
-		logo::format_into(logo::write_char32_t_to_error_message,"[Lexer error: %] ",lexer.current_line_index);
+	static void report_lexer_error(Format_String<std::type_identity_t<Args>...> format,Args&&... args) {
+		logo::format_into(logo::write_char32_t_to_error_message,"[Lexer error] Line %: ",lexer.current_line_index);
 		logo::format_into(logo::write_char32_t_to_error_message,format,std::forward<Args>(args)...);
 		logo::write_char32_t_to_error_message('\n');
-		return Lexing_Status::Error;
 	}
 
 	[[nodiscard]] static bool is_code_point_alpha(char32_t code_point) {
@@ -61,104 +50,107 @@ namespace logo {
 			code_point == '{' || code_point == '}' || code_point == ',' || code_point == U'°' ||
 			code_point == U'√' || code_point == U'∛' || code_point == U'∜' || code_point == '=' ||
 			code_point == U'≠' || code_point == U'∧' || code_point == U'∨' || code_point == U'¬' ||
-			code_point == '<' || code_point == U'≤' || code_point == '>' || code_point == U'≥' || 
+			code_point == '<' || code_point == U'≤' || code_point == '>' || code_point == U'≥' ||
 			code_point == '+' || code_point == '-' || code_point == '*' || code_point == '/' ||
 			code_point == '^' || code_point == '!' || code_point == ';' || code_point == '\'' ||
-			code_point == ':' || code_point == '%' || code_point == '\0';
+			code_point == ':' || code_point == '%';
 	}
 
-	[[nodiscard]] static Lexing_Status append_code_point_bytes(char32_t code_point) {
+	static bool append_code_point_to_token(char32_t code_point) {
 		auto bytes = logo::make_code_units(code_point);
-		if(!lexer.token_string_bytes.push_back(Array_View(bytes.data,bytes.length))) {
-			Report_Error("Couldn't allocate % bytes of memory.",bytes.length);
-			return Lexing_Status::Error;
-		}
+		logo::assert(lexer.token_string_bytes.push_back({bytes.data,bytes.length}));
 		lexer.last_token_code_point = code_point;
-		lexer.token_byte_count += bytes.length;
-		return Lexing_Status::Continue;
+		return true;
 	}
 
-	[[nodiscard]] static Lexing_Result create_token(char32_t code_point) {
-		auto bytes = logo::make_code_units(code_point);
-		if(!lexer.token_string_bytes.push_back('\0')) {
-			Report_Error("Couldn't allocate a byte of memory.");
-			return Lexing_Status::Error;
+	static bool finish_token() {
+		if(lexer.last_token_code_point == '\0') {
+			return true;
 		}
-		if(!lexer.token_string_bytes.push_back(Array_View(bytes.data,bytes.length))) {
-			lexer.token_string_bytes.pop_back();
-			Report_Error("Couldn't allocate a byte of memory.");
-			return Lexing_Status::Error;
-		}
+		auto null_bytes = logo::make_code_units('\0');
+		logo::assert(lexer.token_string_bytes.push_back({null_bytes.data,null_bytes.length}));
 
-		Token token{Token_Type::None,lexer.token_start_byte_index,lexer.token_byte_count,lexer.current_line_index};
-		if(lexer.is_number) {
+		Token token{};
+		token.string = String_View(&lexer.token_string_bytes[lexer.current_token_string_index],(lexer.token_string_bytes.length - 1) - lexer.current_token_string_index);
+		token.line_index = lexer.current_line_index;
+		token.type = Token_Type::None;
+		if(lexer.token_status == Lexing_Token_Status::Number) {
 			token.type = Token_Type::Number_Literal;
 		}
-		else if(lexer.is_string_literal) {
+		else if(lexer.token_status == Lexing_Token_Status::Identifier) {
+			token.type = Token_Type::Identifier;
+		}
+		else if(lexer.token_status == Lexing_Token_Status::String_Literal) {
 			token.type = Token_Type::String_Literal;
 		}
-		else if(lexer.is_comment) {
+		else if(lexer.token_status == Lexing_Token_Status::Whitespace) {
+			token.type = Token_Type::Whitespace;
+		}
+		else if(lexer.token_status == Lexing_Token_Status::Comment) {
 			token.type = Token_Type::Comment;
 		}
-		else if(logo::compare_strings_equal(token.string_view(),"==")) {
+		else if(logo::compare_strings_equal(token.string,"==")) {
 			token.type = Token_Type::Compare_Equal;
 		}
-		else if(logo::compare_strings_equal(token.string_view(),"!=")) {
+		else if(logo::compare_strings_equal(token.string,"!=")) {
 			token.type = Token_Type::Compare_Unequal;
 		}
-		else if(logo::compare_strings_equal(token.string_view(),"<=")) {
+		else if(logo::compare_strings_equal(token.string,"<=")) {
 			token.type = Token_Type::Compare_Less_Than_Or_Equal;
 		}
-		else if(logo::compare_strings_equal(token.string_view(),">=")) {
+		else if(logo::compare_strings_equal(token.string,">=")) {
 			token.type = Token_Type::Compare_Greater_Than_Or_Equal;
 		}
-		else if(logo::compare_strings_equal(token.string_view(),"+=")) {
+		else if(logo::compare_strings_equal(token.string,"+=")) {
 			token.type = Token_Type::Compound_Plus;
 		}
-		else if(logo::compare_strings_equal(token.string_view(),"-=")) {
+		else if(logo::compare_strings_equal(token.string,"-=")) {
 			token.type = Token_Type::Compound_Minus;
 		}
-		else if(logo::compare_strings_equal(token.string_view(),"*=")) {
+		else if(logo::compare_strings_equal(token.string,"*=")) {
 			token.type = Token_Type::Compound_Multiply;
 		}
-		else if(logo::compare_strings_equal(token.string_view(),"/=")) {
+		else if(logo::compare_strings_equal(token.string,"/=")) {
 			token.type = Token_Type::Compound_Divide;
 		}
-		else if(logo::compare_strings_equal(token.string_view(),"%=")) {
+		else if(logo::compare_strings_equal(token.string,"%=")) {
 			token.type = Token_Type::Compound_Remainder;
 		}
-		else if(logo::compare_strings_equal(token.string_view(),"^=")) {
+		else if(logo::compare_strings_equal(token.string,"^=")) {
 			token.type = Token_Type::Compound_Exponentiate;
 		}
-		else if(logo::compare_strings_equal(token.string_view(),"if")) {
+		else if(logo::compare_strings_equal(token.string,"if")) {
 			token.type = Token_Type::Keyword_If;
 		}
-		else if(logo::compare_strings_equal(token.string_view(),"for")) {
+		else if(logo::compare_strings_equal(token.string,"for")) {
 			token.type = Token_Type::Keyword_For;
 		}
-		else if(logo::compare_strings_equal(token.string_view(),"while")) {
+		else if(logo::compare_strings_equal(token.string,"while")) {
 			token.type = Token_Type::Keyword_While;
 		}
-		else if(logo::compare_strings_equal(token.string_view(),"let")) {
+		else if(logo::compare_strings_equal(token.string,"let")) {
 			token.type = Token_Type::Keyword_Let;
 		}
-		else if(logo::compare_strings_equal(token.string_view(),"return")) {
+		else if(logo::compare_strings_equal(token.string,"return")) {
 			token.type = Token_Type::Keyword_Return;
 		}
-		else if(logo::compare_strings_equal(token.string_view(),"break")) {
+		else if(logo::compare_strings_equal(token.string,"break")) {
 			token.type = Token_Type::Keyword_Break;
 		}
-		else if(logo::compare_strings_equal(token.string_view(),"continue")) {
+		else if(logo::compare_strings_equal(token.string,"continue")) {
 			token.type = Token_Type::Keyword_Continue;
 		}
-		else if(logo::compare_strings_equal(token.string_view(),"and")) {
+		else if(logo::compare_strings_equal(token.string,"and")) {
 			token.type = Token_Type::Logical_And;
 		}
-		else if(logo::compare_strings_equal(token.string_view(),"or")) {
+		else if(logo::compare_strings_equal(token.string,"or")) {
 			token.type = Token_Type::Logical_Or;
 		}
-		else if(logo::compare_strings_equal(token.string_view(),"not")) {
+		else if(logo::compare_strings_equal(token.string,"not")) {
 			token.type = Token_Type::Logical_Not;
+		}
+		else if(logo::compare_strings_equal(token.string,"deg")) {
+			token.type = Token_Type::Degree_Sign;
 		}
 		else if(lexer.last_token_code_point == '\n') {
 			lexer.current_line_index += 1;
@@ -245,237 +237,209 @@ namespace logo {
 		else if(lexer.last_token_code_point == U'∜') {
 			token.type = Token_Type::Fourth_Root;
 		}
-		else if(logo::is_code_point_whitespace(lexer.last_token_code_point)) {
-			token.type = Token_Type::Whitespace;
+		if(!lexer.tokens.push_back(token)) {
+			Report_Error("Couldn't allocate % bytes of memory.",sizeof(token));
+			return false;
 		}
-		else token.type = Token_Type::Identifier;
-
-		lexer.token_start_byte_index += lexer.token_byte_count + 1;
-		lexer.last_token_code_point = code_point;
-		lexer.token_byte_count = bytes.length;
-		return token;
+		lexer.last_token_code_point = '\0';
+		lexer.current_token_string_index = lexer.token_string_bytes.length;
+		lexer.token_status = Lexing_Token_Status::Not_Important;
+		return true;
 	}
-	
-	[[nodiscard]] static Lexing_Result process_code_point(char32_t code_point) {
-		if(!lexer.ignore_first_quote && lexer.last_token_code_point == '\"') {
-			auto result = logo::create_token(code_point);
-			lexer.is_string_literal = false;
-			if(logo::is_code_point_digit(code_point)) {
-				lexer.is_number = true;
+
+	static bool finish_token_then_append(char32_t code_point) {
+		if(!logo::finish_token()) {
+			return false;
+		}
+		if(code_point == '\"') {
+			lexer.token_status = Lexing_Token_Status::String_Literal;
+			return true;
+		}
+		auto bytes = logo::make_code_units(code_point);
+		logo::assert(lexer.token_string_bytes.push_back({bytes.data,bytes.length}));
+		lexer.last_token_code_point = code_point;
+		if(logo::is_code_point_alpha(code_point)) {
+			lexer.token_status = Lexing_Token_Status::Identifier;
+		}
+		else if(logo::is_code_point_digit(code_point)) {
+			lexer.token_status = Lexing_Token_Status::Number;
+		}
+		else if(logo::is_code_point_whitespace(code_point)) {
+			lexer.token_status = Lexing_Token_Status::Whitespace;
+		}
+		else if(code_point == '#') {
+			lexer.token_status = Lexing_Token_Status::Comment;
+		}
+		else if(code_point == '\"') {
+			lexer.token_status = Lexing_Token_Status::String_Literal;
+		}
+		return true;
+	}
+
+	static bool process_code_point(char32_t code_point) {
+		if(lexer.last_token_code_point == '\0' && lexer.token_status != Lexing_Token_Status::String_Literal) {
+			if(logo::is_code_point_alpha(code_point)) {
+				lexer.token_status = Lexing_Token_Status::Identifier;
 			}
-			else if(code_point == '\"') {
-				lexer.is_string_literal = true;
-				lexer.ignore_first_quote = true;
+			else if(logo::is_code_point_digit(code_point)) {
+				lexer.token_status = Lexing_Token_Status::Number;
+			}
+			else if(logo::is_code_point_whitespace(code_point)) {
+				lexer.token_status = Lexing_Token_Status::Whitespace;
 			}
 			else if(code_point == '#') {
-				lexer.is_comment = true;
+				lexer.token_status = Lexing_Token_Status::Comment;
 			}
-			return result;
+			else if(code_point == '\"') {
+				lexer.token_status = Lexing_Token_Status::String_Literal;
+			}
+			return logo::append_code_point_to_token(code_point);
 		}
-		if(lexer.is_string_literal) {
+		if(lexer.token_status == Lexing_Token_Status::Comment) {
 			if(code_point == '\n') {
-				return logo::report_lexer_error("String literals cannot contain newlines. Use escape sequence '\\n' instead.");
+				return logo::finish_token_then_append(code_point);
 			}
-			lexer.ignore_first_quote = false;
+			return logo::append_code_point_to_token(code_point);
+		}
+		if(lexer.token_status == Lexing_Token_Status::String_Literal) {
 			if(lexer.escape_next_character) {
 				if(code_point == 'n') {
 					code_point = '\n';
 				}
-				else if(code_point == '\"') {
-					lexer.ignore_first_quote = true;
+				else if(code_point != '\"' && code_point != '\\') {
+					logo::report_lexer_error("Invalid escape sequence \"\\%\" in a string literal.",code_point);
+					return false;
 				}
 				lexer.escape_next_character = false;
-				return logo::append_code_point_bytes(code_point);
+				return logo::append_code_point_to_token(code_point);
 			}
 			if(code_point == '\\') {
 				lexer.escape_next_character = true;
-				return Lexing_Status::Continue;
+				return true;
 			}
-			return logo::append_code_point_bytes(code_point);
+			if(code_point == '\"') {
+				return logo::finish_token();
+			}
+			return logo::append_code_point_to_token(code_point);
 		}
-		if(lexer.is_comment) {
-			if(code_point == '\n') {
-				auto result = logo::create_token(code_point);
-				lexer.is_comment = false;
-				return result;
+		if(lexer.token_status == Lexing_Token_Status::Identifier) {
+			if(logo::is_code_point_alpha(code_point) || logo::is_code_point_digit(code_point)) {
+				return logo::append_code_point_to_token(code_point);
 			}
-			return logo::append_code_point_bytes(code_point);
+			return logo::finish_token_then_append(code_point);
 		}
-		if(lexer.last_token_code_point == '\0') {
-			if(logo::is_code_point_digit(code_point)) {
-				lexer.is_number = true;
+		if(lexer.token_status == Lexing_Token_Status::Number) {
+			if(logo::is_code_point_digit(code_point) || code_point == '.') {
+				return logo::append_code_point_to_token(code_point);
 			}
-			else if(code_point == '#') {
-				lexer.is_comment = true;
+			return logo::finish_token_then_append(code_point);
+		}
+		if(lexer.token_status == Lexing_Token_Status::Whitespace) {
+			if(logo::is_code_point_whitespace(code_point)) {
+				return logo::append_code_point_to_token(code_point);
 			}
-			else if(code_point == '\"') {
-				lexer.is_string_literal = true;
-				lexer.ignore_first_quote = true;
-			}
-			return logo::append_code_point_bytes(code_point);
+			return logo::finish_token_then_append(code_point);
 		}
 		if(lexer.last_token_code_point == '.') {
-			if(lexer.is_number && logo::is_code_point_digit(code_point)) {
-				return logo::append_code_point_bytes(code_point);
+			if(lexer.token_status == Lexing_Token_Status::Number) {
+				return logo::append_code_point_to_token(code_point);
 			}
-			auto result = logo::create_token(code_point);
-			if(code_point == '#') {
-				lexer.is_comment = true;
-			}
-			else if(code_point == '\"') {
-				lexer.is_string_literal = true;
-				lexer.ignore_first_quote = true;
-			}
-			return result;
+			return logo::finish_token_then_append(code_point);
 		}
-		if(lexer.last_token_code_point == '\n') {
-			auto result = logo::create_token(code_point);
-			if(logo::is_code_point_digit(code_point)) {
-				lexer.is_number = true;
-			}
-			else if(code_point == '#') {
-				lexer.is_comment = true;
-			}
-			else if(code_point == '\"') {
-				lexer.is_string_literal = true;
-				lexer.ignore_first_quote = true;
-			}
-			return result;
-		}
-		if(logo::is_code_point_alpha(lexer.last_token_code_point)) {
-			if(logo::is_code_point_alpha(code_point) || logo::is_code_point_digit(code_point)) {
-				return logo::append_code_point_bytes(code_point);
-			}
-			auto result = logo::create_token(code_point);
-			if(code_point == '\"') {
-				lexer.is_string_literal = true;
-				lexer.ignore_first_quote = true;
-			}
-			else if(code_point == '#') {
-				lexer.is_comment = true;
-			}
-			return result;
-		}
-		if(logo::is_code_point_digit(lexer.last_token_code_point)) {
-			if(logo::is_code_point_digit(code_point)) {
-				return logo::append_code_point_bytes(code_point);
-			}
-			if(code_point == '.' && lexer.is_number) {
-				return logo::append_code_point_bytes(code_point);
-			}
-			auto result = logo::create_token(code_point);
-			lexer.is_number = false;
-			if(code_point == '\"') {
-				lexer.is_string_literal = true;
-				lexer.ignore_first_quote = true;
-			}
-			else if(code_point == '#') {
-				lexer.is_comment = true;
-			}
-			return result;
-		}
-		if(lexer.last_token_code_point == '=' || lexer.last_token_code_point == '!' || lexer.last_token_code_point == '<' || lexer.last_token_code_point == '>' ||
-		   lexer.last_token_code_point == '+' || lexer.last_token_code_point == '-' || lexer.last_token_code_point == '*' || lexer.last_token_code_point == '/' ||
-		   lexer.last_token_code_point == '%' || lexer.last_token_code_point == '^') {
+		if(logo::is_one_of(lexer.last_token_code_point,'+','-','*','/','^','%','=','!','<','>')) {
 			if(code_point == '=') {
-				return logo::append_code_point_bytes(code_point);
+				return logo::append_code_point_to_token(code_point);
 			}
-			auto result = logo::create_token(code_point);
-			if(logo::is_code_point_digit(code_point)) {
-				lexer.is_number = true;
-			}
-			else if(code_point == '\"') {
-				lexer.is_string_literal = true;
-				lexer.ignore_first_quote = true;
-			}
-			else if(code_point == '#') {
-				lexer.is_comment = true;
-			}
-			return result;
+			return logo::finish_token_then_append(code_point);
 		}
-		if(logo::is_code_point_special(lexer.last_token_code_point)) {
-			auto result = logo::create_token(code_point);
-			if(logo::is_code_point_digit(code_point)) {
-				lexer.is_number = true;
-			}
-			else if(code_point == '\"') {
-				lexer.is_string_literal = true;
-				lexer.ignore_first_quote = true;
-			}
-			else if(code_point == '#') {
-				lexer.is_comment = true;
-			}
-			return result;
+		return logo::finish_token_then_append(code_point);
+	}
+
+	bool init_lexer(Array_View<char> input) {
+		lexer = {};
+		lexer.current_line_index = 1;
+		if(!lexer.token_string_bytes.reserve(input.length * 2)) {
+			Report_Error("Couldn't allocate % bytes of memory.",input.length * 2);
+			return false;
 		}
-		if(logo::is_code_point_whitespace(lexer.last_token_code_point)) {
-			if(logo::is_code_point_whitespace(code_point)) {
-				return logo::append_code_point_bytes(code_point);
+		bool successful_return = false;
+		defer[&]{ if(!successful_return) logo::term_lexer(); };
+
+		char32_t current_code_point = '\0';
+		std::size_t remaining_code_point_byte_count = 0;
+		for(char byte : input) {
+			if(current_code_point == '\0') {
+				if((byte & 0b10000000) == 0) {
+					current_code_point = static_cast<char32_t>(byte);
+					remaining_code_point_byte_count = 0;
+				}
+				else if((byte & 0b11100000) == 0b11000000) {
+					current_code_point = static_cast<char32_t>(byte & 0b00011111);
+					remaining_code_point_byte_count = 1;
+				}
+				else if((byte & 0b11110000) == 0b11100000) {
+					current_code_point = static_cast<char32_t>(byte & 0b00001111);
+					remaining_code_point_byte_count = 2;
+				}
+				else if((byte & 0b11111000) == 0b11110000) {
+					current_code_point = static_cast<char32_t>(byte & 0b00000111);
+					remaining_code_point_byte_count = 3;
+				}
+				else {
+					logo::report_lexer_error("Invalid byte (%) in an UTF-8 sequence.",byte);
+					return false;
+				}
 			}
-			auto result = logo::create_token(code_point);
-			if(logo::is_code_point_digit(code_point)) {
-				lexer.is_number = true;
+			else {
+				remaining_code_point_byte_count -= 1;
+				if((byte & 0b11000000) != 0b10000000) {
+					logo::report_lexer_error("Invalid byte (%) in an UTF-8 sequence.",byte);
+					return false;
+				}
+				current_code_point = static_cast<char32_t>((current_code_point << 6) | (byte & 0b00111111));
 			}
-			else if(code_point == '\"') {
-				lexer.is_string_literal = true;
-				lexer.ignore_first_quote = true;
+			if(remaining_code_point_byte_count == 0) {
+				if(current_code_point == '\0') {
+					logo::report_lexer_error("Null bytes are not allowed.");
+					return false;
+				}
+				if(!logo::process_code_point(current_code_point)) {
+					return false;
+				}
+				current_code_point = '\0';
 			}
-			else if(code_point == '#') {
-				lexer.is_comment = true;
-			}
-			return result;
 		}
-		Report_Error("Unrecognized UTF-8 code point (%).",lexer.last_token_code_point);
-		return Lexing_Status::Error;
+		if(current_code_point != '\0') {
+			if(!logo::process_code_point(current_code_point)) {
+				return false;
+			}
+		}
+		if(lexer.token_status == Lexing_Token_Status::String_Literal) {
+			logo::report_lexer_error("Unmatched string literal.");
+			return false;
+		}
+		if(!logo::finish_token()) {
+			return false;
+		}
+		successful_return = true;
+		return true;
+	}
+
+	void term_lexer() {
+		lexer.tokens.destroy();
+		lexer.token_string_bytes.destroy();
 	}
 
 	Lexing_Result get_next_token() {
-		char32_t code_point = 0;
-		std::size_t code_point_length = 0;
-		std::size_t code_point_remaining_byte_count = 0;
-		for(const char* ptr = lexer.begin;ptr != lexer.end;ptr += 1) {
-			char code_unit = *ptr;
-			if(code_point_length == 0) {
-				if((code_unit & 0b10000000) == 0) {
-					code_point = static_cast<char32_t>(code_unit);
-					code_point_remaining_byte_count = 0;
-				}
-				else if((code_unit & 0b11100000) == 0b11000000) {
-					code_point = static_cast<char32_t>(code_unit & 0b00011111);
-					code_point_remaining_byte_count = 1;
-				}
-				else if((code_unit & 0b11110000) == 0b11100000) {
-					code_point = static_cast<char32_t>(code_unit & 0b00001111);
-					code_point_remaining_byte_count = 2;
-				}
-				else if((code_unit & 0b11111000) == 0b11110000) {
-					code_point = static_cast<char32_t>(code_unit & 0b00000111);
-					code_point_remaining_byte_count = 3;
-				}
-				else return logo::report_lexer_error("Invalid byte (%) in UTF-8 sequence (index 0).",code_unit);
+		while(true) {
+			if(lexer.current_token_index >= lexer.tokens.length) {
+				return Lexing_Status::Out_Of_Tokens;
 			}
-			else {
-				if((code_unit & 0b11000000) != 0b10000000) return logo::report_lexer_error("Invalid byte (%) in UTF-8 sequence (index %).",code_unit,code_point_length);
-				code_point = static_cast<char32_t>((code_point << 6) | (code_unit & 0b00111111));
+			const Token& token = lexer.tokens[lexer.current_token_index++];
+			if(token.type != Token_Type::Comment && token.type != Token_Type::Whitespace && token.type != Token_Type::Newline) {
+				return token;
 			}
-
-			code_point_length += 1;
-			if(code_point_remaining_byte_count == 0) {
-				auto [token,status] = logo::process_code_point(code_point);
-				switch(status) {
-					case Lexing_Status::Error: return Lexing_Status::Error;
-					case Lexing_Status::Success: {
-						lexer.begin = ptr + 1;
-						return token;
-					}
-					case Lexing_Status::Out_Of_Tokens: logo::unreachable();
-				}
-				code_point_length = 0;
-			}
-			else code_point_remaining_byte_count -= 1;
 		}
-		if(lexer.is_string_literal) {
-			return logo::report_lexer_error("Unmatched string literal.");
-		}
-		return Lexing_Status::Out_Of_Tokens;
+		logo::unreachable();
 	}
 }

@@ -12,7 +12,7 @@
 #endif
 #include "utils.hpp"
 #include "debug.hpp"
-#include "lexer.hpp"
+#include "parser.hpp"
 #include "heap_array.hpp"
 
 namespace logo {
@@ -40,7 +40,7 @@ namespace logo {
 		}
 
 		Heap_Array<char> bytes{};
-		if(!bytes.resize(file_size + 1)) {
+		if(!bytes.resize(file_size)) {
 			Report_Error("Couldn't allocate % bytes of memory.",file_size);
 			return {};
 		}
@@ -50,7 +50,6 @@ namespace logo {
 			Report_Error("Couldn't read data from file \"%\".",path);
 			return {};
 		}
-		bytes[file_size] = '\0';
 		return bytes;
 #else
 		int file = open64(path.begin_ptr,O_RDONLY);
@@ -67,7 +66,7 @@ namespace logo {
 		}
 
 		Heap_Array<char> bytes{};
-		if(!bytes.resize(file_stat.st_size + 1)) {
+		if(!bytes.resize(file_stat.st_size)) {
 			Report_Error("Couldn't allocate % bytes of memory.",static_cast<std::size_t>(file_stat.st_size));
 			return {};
 		}
@@ -76,18 +75,17 @@ namespace logo {
 			Report_Error("Couldn't read data from file \"%\".",path);
 			return {};
 		}
-		bytes[file_stat.st_size] = '\0';
 		return bytes;
 #endif
 	}
 
-	void print_token(const Token& token) {
+	/*void print_token(const Token& token) {
 		logo::print("[%] ",token.line_index);
 		switch(token.type) {
-			case Token_Type::Identifier: { logo::print("Identifier: %\n",token.string_view()); break; }
-			case Token_Type::Number_Literal: { logo::print("Number literal: %\n",token.string_view()); break; }
-			case Token_Type::String_Literal: { logo::print("String literal: %\n",token.string_view()); break; }
-			case Token_Type::Newline: { logo::print("\\n\n"); break; }
+			case Token_Type::Identifier: { logo::print("%\n",token.string_view()); break; }
+			case Token_Type::Number_Literal: { logo::print("%\n",token.string_view()); break; }
+			case Token_Type::String_Literal: { logo::print("%\n",token.string_view()); break; }
+			case Token_Type::Newline: { logo::print("[\\n]\n"); break; }
 			case Token_Type::Left_Paren: { logo::print("(\n"); break; }
 			case Token_Type::Right_Paren: { logo::print(")\n"); break; }
 			case Token_Type::Left_Bracket: { logo::print("[\n"); break; }
@@ -103,8 +101,8 @@ namespace logo {
 			case Token_Type::Asterisk: { logo::print("*\n"); break; }
 			case Token_Type::Slash: { logo::print("/\n"); break; }
 			case Token_Type::Caret: { logo::print("^\n"); break; }
-			case Token_Type::Whitespace: { logo::print("Whitespace\n"); break; }
-			case Token_Type::Comment: { logo::print("Comment: %\n",token.string_view()); break; }
+			case Token_Type::Whitespace: { logo::print("[Whitespace]\n"); break; }
+			case Token_Type::Comment: { logo::print("%\n",token.string_view()); break; }
 			case Token_Type::Compare_Equal: { logo::print("==\n"); break; }
 			case Token_Type::Keyword_Let: { logo::print("let\n"); break; }
 			case Token_Type::Keyword_If: { logo::print("if\n"); break; }
@@ -122,9 +120,10 @@ namespace logo {
 			case Token_Type::Logical_And: { logo::print("∧\n"); break; }
 			case Token_Type::Logical_Or: { logo::print("∨\n"); break; }
 			case Token_Type::Logical_Not: { logo::print("¬\n"); break; }
+			case Token_Type::Degree_Sign: { logo::print("°\n"); break; }
 			default: { logo::eprint("Printing this token has not been implemented.\n"); break; }
 		}
-	}
+	}*/
 }
 
 int main() {
@@ -141,18 +140,9 @@ int main() {
 	}
 	defer[&]{file_bytes.destroy();};
 
-	logo::init_lexer(file_bytes.begin(),file_bytes.end());
-	defer[]{logo::term_lexer();};
-
-	while(true) {
-		auto [token,status] = logo::get_next_token();
-		if(status == logo::Lexing_Status::Out_Of_Tokens) break;
-		else if(status == logo::Lexing_Status::Error) {
-			logo::eprint("%\n",logo::get_reported_error());
-			return 1;
-		}
-		else if(status == logo::Lexing_Status::Continue) logo::unreachable();
-		logo::print_token(token);
+	if(!logo::parse_input({file_bytes.data,file_bytes.length})) {
+		logo::eprint("%\n",logo::get_reported_error());
+		return 1;
 	}
 	return 0;
 }

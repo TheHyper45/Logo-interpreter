@@ -62,6 +62,11 @@ namespace logo {
 			case 8: return 20;
 		}
 	}
+
+	template<typename Type,typename... Types>
+	constexpr bool is_one_of(const Type& type,const Types&... types) {
+		return ((type == types) || ...);
+	}
 }
 
 #endif

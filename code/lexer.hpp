@@ -56,25 +56,22 @@ namespace logo {
 	};
 	struct Token {
 		Token_Type type;
-		std::size_t start_index;
-		std::size_t length;
+		String_View string;
 		std::size_t line_index;
-		String_View string_view() const;
 	};
+
 	enum struct Lexing_Status {
 		Success,
-		Error,
-		Out_Of_Tokens,
-		Continue
+		Out_Of_Tokens
 	};
 	struct Lexing_Result {
-		Token token;
+		const Token* token;
 		Lexing_Status status;
-		Lexing_Result(const Token& _token) : token(_token),status(Lexing_Status::Success) {}
+		Lexing_Result(const Token& _token) : token(&_token),status(Lexing_Status::Success) {}
 		Lexing_Result(Lexing_Status _status) : token(),status(_status) {}
 	};
 
-	void init_lexer(const char* begin,const char* end);
+	bool init_lexer(Array_View<char> input);
 	void term_lexer();
 	[[nodiscard]] Lexing_Result get_next_token();
 }
