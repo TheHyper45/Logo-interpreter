@@ -3,6 +3,7 @@
 #include <cinttypes>
 #include "utils.hpp"
 #include "string.hpp"
+#include "debug.hpp"
 
 namespace logo {
 	char32_t make_code_point(Array_View<char> bytes) {
@@ -14,6 +15,7 @@ namespace logo {
 			return static_cast<char32_t>(((bytes[0] & 0b00001111) << 12) | ((bytes[1] & 0b00111111) << 6) | (bytes[2] & 0b00111111));
 		else if(bytes.length == 4)
 			return static_cast<char32_t>(((bytes[0] & 0b00000111) << 18) | ((bytes[1] & 0b00111111) << 12) | ((bytes[2] & 0b00111111) << 6) | (bytes[3] & 0b00111111));
+		logo::unreachable();
 	}
 	Static_Array<char,4> make_code_units(char32_t code_point) {
 		Static_Array<char,4> bytes{};
@@ -42,6 +44,7 @@ namespace logo {
 		else if(code_point <= 0x7FF) return 2;
 		else if(code_point <= 0xFFFF) return 3;
 		else if(code_point <= 0x10FFFF) return 4;
+		logo::unreachable();
 	}
 
 	String_Const_Iterator& String_Const_Iterator::operator++() {
@@ -77,6 +80,7 @@ namespace logo {
 			char code_unit3 = *(ptr + 3);
 			return static_cast<char32_t>(((code_unit0 & 0b00000111) << 18) | ((code_unit1 & 0b00111111) << 12) | ((code_unit2 & 0b00111111) << 6) | (code_unit3 & 0b00111111));
 		}
+		logo::unreachable();
 	}
 
 	String_View::String_View() : begin_ptr(),end_ptr() {}
@@ -147,6 +151,12 @@ namespace logo {
 		arg.value.char32_t_v = value;
 		return arg;
 	}
+	String_Format_Arg make_string_format_arg(double value) {
+		String_Format_Arg arg{};
+		arg.type = String_Format_Arg::Type::Double;
+		arg.value.double_v = value;
+		return arg;
+	}
 
 	std::size_t _format_into(bool(*callback)(char32_t,const void*),const void* callback_arg,String_View format,Array_View<String_Format_Arg> args) {
 		std::size_t count = 0;
@@ -157,9 +167,8 @@ namespace logo {
 				const String_Format_Arg& arg = args[current_arg_index];
 				switch(arg.type) {
 					case String_Format_Arg::Type::Size_T: {
-						static constexpr auto Buffer_Size = logo::max_int_char_count<std::size_t>();
-						char buffer[Buffer_Size + 1]{};
-						int result = std::snprintf(buffer,Buffer_Size,"%zu",arg.value.size_t_v);
+						char buffer[32]{};
+						int result = std::snprintf(buffer,sizeof(buffer) - 1,"%zu",arg.value.size_t_v);
 						if(result < 0) return count;
 						for(auto i : Range(result)) {
 							if(!callback(buffer[i],callback_arg)) return count;
@@ -168,9 +177,8 @@ namespace logo {
 						break;
 					}
 					case String_Format_Arg::Type::Uint_Least_32_T: {
-						static constexpr auto Buffer_Size = logo::max_int_char_count<std::uint_least32_t>();
-						char buffer[Buffer_Size + 1]{};
-						int result = std::snprintf(buffer,Buffer_Size,"%" PRIuLEAST32,arg.value.uint_least32_t_v);
+						char buffer[32]{};
+						int result = std::snprintf(buffer,sizeof(buffer) - 1,"%" PRIuLEAST32,arg.value.uint_least32_t_v);
 						if(result < 0) return count;
 						for(auto i : Range(result)) {
 							if(!callback(buffer[i],callback_arg)) return count;
@@ -186,9 +194,8 @@ namespace logo {
 						break;
 					}
 					case String_Format_Arg::Type::Char: {
-						static constexpr auto Buffer_Size = logo::max_int_char_count<char>();
-						char buffer[Buffer_Size + 1]{};
-						int result = std::snprintf(buffer,Buffer_Size,"%d",arg.value.char_v);
+						char buffer[32]{};
+						int result = std::snprintf(buffer,sizeof(buffer) - 1,"%d",arg.value.char_v);
 						if(result < 0) return count;
 						for(auto i : Range(result)) {
 							if(!callback(buffer[i],callback_arg)) return count;
@@ -199,6 +206,16 @@ namespace logo {
 					case String_Format_Arg::Type::Char32_T: {
 						if(!callback(arg.value.char32_t_v,callback_arg)) return count;
 						count += logo::code_point_byte_length(arg.value.char32_t_v);
+						break;
+					}
+					case String_Format_Arg::Type::Double: {
+						char buffer[128]{};
+						int result = std::snprintf(buffer,sizeof(buffer) - 1,"%f",arg.value.double_v);
+						if(result < 0) return count;
+						for(auto i : Range(result)) {
+							if(!callback(buffer[i],callback_arg)) return count;
+							count += 1;
+						}
 						break;
 					}
 				}

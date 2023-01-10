@@ -14,6 +14,7 @@
 #include "debug.hpp"
 #include "parser.hpp"
 #include "heap_array.hpp"
+#include "memory_arena.hpp"
 
 namespace logo {
 	[[nodiscard]] static Option<Heap_Array<char>> read_file(String_View path) {
@@ -45,7 +46,7 @@ namespace logo {
 			return {};
 		}
 		DWORD read_bytes{};
-		if(!ReadFile(file,bytes.data,file_size,&read_bytes,nullptr) || read_bytes != file_size) {
+		if(!ReadFile(file,bytes.data,static_cast<DWORD>(file_size),&read_bytes,nullptr) || read_bytes != file_size) {
 			bytes.destroy();
 			Report_Error("Couldn't read data from file \"%\".",path);
 			return {};
@@ -78,52 +79,6 @@ namespace logo {
 		return bytes;
 #endif
 	}
-
-	/*void print_token(const Token& token) {
-		logo::print("[%] ",token.line_index);
-		switch(token.type) {
-			case Token_Type::Identifier: { logo::print("%\n",token.string_view()); break; }
-			case Token_Type::Number_Literal: { logo::print("%\n",token.string_view()); break; }
-			case Token_Type::String_Literal: { logo::print("%\n",token.string_view()); break; }
-			case Token_Type::Newline: { logo::print("[\\n]\n"); break; }
-			case Token_Type::Left_Paren: { logo::print("(\n"); break; }
-			case Token_Type::Right_Paren: { logo::print(")\n"); break; }
-			case Token_Type::Left_Bracket: { logo::print("[\n"); break; }
-			case Token_Type::Right_Bracket: { logo::print("]\n"); break; }
-			case Token_Type::Left_Brace: { logo::print("{\n"); break; }
-			case Token_Type::Right_Brace: { logo::print("}\n"); break; }
-			case Token_Type::Comma: { logo::print(",\n"); break; }
-			case Token_Type::Semicolon: { logo::print(";\n"); break; }
-			case Token_Type::Colon: { logo::print(":\n"); break; }
-			case Token_Type::Equals_Sign: { logo::print("=\n"); break; }
-			case Token_Type::Plus: { logo::print("+\n"); break; }
-			case Token_Type::Minus: { logo::print("-\n"); break; }
-			case Token_Type::Asterisk: { logo::print("*\n"); break; }
-			case Token_Type::Slash: { logo::print("/\n"); break; }
-			case Token_Type::Caret: { logo::print("^\n"); break; }
-			case Token_Type::Whitespace: { logo::print("[Whitespace]\n"); break; }
-			case Token_Type::Comment: { logo::print("%\n",token.string_view()); break; }
-			case Token_Type::Compare_Equal: { logo::print("==\n"); break; }
-			case Token_Type::Keyword_Let: { logo::print("let\n"); break; }
-			case Token_Type::Keyword_If: { logo::print("if\n"); break; }
-			case Token_Type::Keyword_For: { logo::print("for\n"); break; }
-			case Token_Type::Keyword_While: { logo::print("while\n"); break; }
-			case Token_Type::Keyword_Return: { logo::print("return\n"); break; }
-			case Token_Type::Keyword_Break: { logo::print("break\n"); break; }
-			case Token_Type::Keyword_Continue: { logo::print("continue\n"); break; }
-			case Token_Type::Compound_Plus: { logo::print("+=\n"); break; }
-			case Token_Type::Compound_Minus: { logo::print("-=\n"); break; }
-			case Token_Type::Compound_Multiply: { logo::print("*=\n"); break; }
-			case Token_Type::Compound_Divide: { logo::print("/=\n"); break; }
-			case Token_Type::Compound_Remainder: { logo::print("%=\n","%"); break; }
-			case Token_Type::Compound_Exponentiate: { logo::print("^=\n"); break; }
-			case Token_Type::Logical_And: { logo::print("∧\n"); break; }
-			case Token_Type::Logical_Or: { logo::print("∨\n"); break; }
-			case Token_Type::Logical_Not: { logo::print("¬\n"); break; }
-			case Token_Type::Degree_Sign: { logo::print("°\n"); break; }
-			default: { logo::eprint("Printing this token has not been implemented.\n"); break; }
-		}
-	}*/
 }
 
 int main() {
@@ -140,9 +95,11 @@ int main() {
 	}
 	defer[&]{file_bytes.destroy();};
 
-	if(!logo::parse_input({file_bytes.data,file_bytes.length})) {
+	auto [parsing_result,parsing_successful] = logo::parse_input({file_bytes.data,file_bytes.length});
+	if(!parsing_successful) {
 		logo::eprint("%\n",logo::get_reported_error());
 		return 1;
 	}
+	defer[&]{parsing_result.destroy();};
 	return 0;
 }

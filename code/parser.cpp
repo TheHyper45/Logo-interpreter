@@ -1,101 +1,69 @@
-#include "utils.hpp"
 #include "lexer.hpp"
 #include "debug.hpp"
 #include "parser.hpp"
-
-/*
-#define LOGO_CHECK_LEXING_RESULT(VAR)\
-	do {\
-		if((VAR).status == Lexing_Status::Error || (VAR).status == Lexing_Status::Out_Of_Tokens) {\
-			return false;\
-		}\
-	}\
-	while(false)*/
+#include "heap_array.hpp"
 
 namespace logo {
-	static struct {
-		std::size_t last_token_line_index;
-	} parser;
+	void Parsing_Result::destroy() {
+		memory.destroy();
+	}
 
-	/*template<typename... Args>
-	void report_parser_error(Format_String<std::type_identity_t<Args>...> format,Args&&... args) {
-		logo::format_into(logo::write_char32_t_to_error_message,"[Syntax error: %] ",parser.last_token_line_index);
+	template<typename... Args>
+	static void report_parser_error(Format_String<std::type_identity_t<Args>...> format,Args&&... args) {
+		logo::format_into(logo::write_char32_t_to_error_message,"[Syntax error] Line %: ",logo::get_token_line_index());
 		logo::format_into(logo::write_char32_t_to_error_message,format,std::forward<Args>(args)...);
 		logo::write_char32_t_to_error_message('\n');
 	}
 
 	template<typename... Args>
 	[[nodiscard]] static Lexing_Result require_next_token(Token_Type type,Format_String<std::type_identity_t<Args>...> format,Args&&... args) {
-		while(true) {
-			auto result = logo::get_next_token();
-			switch(result.status) {
-				case Lexing_Status::Out_Of_Tokens: {
-					logo::report_parser_error(format,args...);
-					return result.status;
-				}
-				case Lexing_Status::Error: {
-					return result.status;
-				}
-				default: {
-					if(result.token.type != type) {
-						parser.last_token_line_index = result.token.line_index;
-						logo::report_parser_error(format,args...);
-						return Lexing_Status::Error;
-					}
-					return result;
-				}
-			}
+		auto token = logo::get_next_token();
+		if(token.status == Lexing_Status::Error) return Lexing_Status::Error;
+		if(token.status == Lexing_Status::Out_Of_Tokens) {
+			logo::report_parser_error(format,args...);
+			return Lexing_Status::Error;
 		}
+		if(token.token->type != type) {
+			logo::report_parser_error(format,args...);
+			return Lexing_Status::Error;
+		}
+		return token;
 	}
 
-	static bool parse_expression() {
-		//TODO: Implement parsing expressions.
-		return true;
-	}*/
+	enum struct Parsing_Status {
+		Continue,
+		Error,
+		Complete
+	};
 
-	bool parse_input(Array_View<char> input) {
+	[[nodiscard]] Option<Parsing_Result> parse_input(Array_View<char> input) {
+		if(input.length == 0) {
+			logo::report_parser_error("Empty input file.");
+			return {};
+		}
 		if(!logo::init_lexer(input)) {
-			return false;
+			return {};
 		}
 		defer[]{logo::term_lexer();};
+		
+		while(true) {
+			auto token = logo::get_next_token();
+			if(token.status == Lexing_Status::Out_Of_Tokens) break;
+			logo::print("(%,%) %\n",token.token->line_index,static_cast<std::size_t>(token.token->type),token.token->string);
+		}
+		return {};
+		
+		/*Parsing_Result result{};
+		bool successful_return = false;
+		defer[&]{if(!successful_return) result.destroy();};
 
 		while(true) {
-			auto result = logo::get_next_token();
-			if(result.status == Lexing_Status::Out_Of_Tokens) break;
-			if(result.token->type == Token_Type::String_Literal) {
-				logo::print("(%) \"%\"\n",result.token->line_index,result.token->string);
-			}
-			else logo::print("(%) %\n",result.token->line_index,result.token->string);
-		}
-
-		/*logo::init_lexer(begin,end);
-		defer[]{logo::term_lexer();};
-
-		{
-			auto first = logo::get_next_token();
-			if(first.status == Lexing_Status::Error) {
-				return false;
-			}
-			if(first.status == Lexing_Status::Out_Of_Tokens) {
-				return true;
-			}
-
-			if(first.token.type == Token_Type::Keyword_Let) {
-				auto identifier = logo::require_next_token(Token_Type::Identifier,"After 'let' an identifier is required.");
-				LOGO_CHECK_LEXING_RESULT(identifier);
-				
-				auto assignment = logo::require_next_token(Token_Type::Equals_Sign,"After an identifier in a variable declaration, '=' is required.");
-				LOGO_CHECK_LEXING_RESULT(assignment);
-
-				if(!logo::parse_expression()) {
-					return false;
-				}
-
-				auto semicolon = logo::require_next_token(Token_Type::Semicolon,"Missing ';' at the end of a line.");
-				LOGO_CHECK_LEXING_RESULT(semicolon);
-			}
+			auto status = logo::parse_statement(&result);
+			if(status == Parsing_Status::Error) return {};
+			if(status == Parsing_Status::Complete) break;
 		}*/
 
-		return true;
+		//successful_return = true;
+		//return result;
 	}
 }

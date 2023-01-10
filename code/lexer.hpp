@@ -35,6 +35,7 @@ namespace logo {
 		Minus,
 		Asterisk,
 		Slash,
+		Percent,
 		Caret,
 		Compound_Plus,
 		Compound_Minus,
@@ -42,10 +43,6 @@ namespace logo {
 		Compound_Divide,
 		Compound_Remainder,
 		Compound_Exponentiate,
-		Degree_Sign,
-		Square_Root,
-		Cube_Root,
-		Fourth_Root,
 		Keyword_If,
 		Keyword_While,
 		Keyword_For,
@@ -54,14 +51,18 @@ namespace logo {
 		Keyword_Continue,
 		Keyword_Return
 	};
+	[[nodiscard]] std::size_t get_operator_precedence(Token_Type type);
+
 	struct Token {
 		Token_Type type;
 		String_View string;
 		std::size_t line_index;
+		double number_value;
 	};
 
 	enum struct Lexing_Status {
 		Success,
+		Error,
 		Out_Of_Tokens
 	};
 	struct Lexing_Result {
@@ -74,6 +75,8 @@ namespace logo {
 	bool init_lexer(Array_View<char> input);
 	void term_lexer();
 	[[nodiscard]] Lexing_Result get_next_token();
+	[[nodiscard]] Lexing_Result peek_next_token();
+	[[nodiscard]] std::size_t get_token_line_index();
 }
 
 #endif

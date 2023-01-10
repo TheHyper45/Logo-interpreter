@@ -77,7 +77,8 @@ namespace logo {
 			Uint_Least_32_T,
 			String_View,
 			Char,
-			Char32_T
+			Char32_T,
+			Double
 		};
 		union Value {
 			std::size_t size_t_v;
@@ -85,6 +86,7 @@ namespace logo {
 			String_View string_view_v;
 			char char_v;
 			char32_t char32_t_v;
+			double double_v;
 		};
 		Type type;
 		Value value;
@@ -95,6 +97,7 @@ namespace logo {
 	[[nodiscard]] String_Format_Arg make_string_format_arg(String_View value);
 	[[nodiscard]] String_Format_Arg make_string_format_arg(char value);
 	[[nodiscard]] String_Format_Arg make_string_format_arg(char32_t value);
+	[[nodiscard]] String_Format_Arg make_string_format_arg(double value);
 	template<std::size_t Count>
 	[[nodiscard]] String_Format_Arg make_string_format_arg(const Array_String<Count>& string) {
 		String_Format_Arg result{};

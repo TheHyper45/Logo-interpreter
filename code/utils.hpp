@@ -40,7 +40,18 @@ namespace logo {
 		T value;
 		bool has_value;
 		Option() : value(),has_value() {}
+		Option(const Option<T>& option) : value(option.value),has_value(option.has_value) {}
 		Option(const T& _value) : value(_value),has_value(true) {}
+		Option& operator=(const T& _value) {
+			value = _value;
+			has_value = true;
+			return *this;
+		}
+		Option& operator=(const Option<T>& option) {
+			value = option.value;
+			has_value = option.has_value;
+			return *this;
+		}
 	};
 
 	template<typename Lambda>
@@ -53,19 +64,41 @@ namespace logo {
 #define LOGO_CONCAT(X,Y) LOGO_CONCAT_(X,Y)
 #define defer logo::Deferred_Lambda LOGO_CONCAT(_lambda,__LINE__) =
 
-	template<typename T>
-	consteval std::size_t max_int_char_count() {
-		switch(sizeof(T)) {
-			case 1: return 4;
-			case 2: return 6;
-			case 4: return 11;
-			case 8: return 20;
-		}
+	template<typename Type,typename... Types>
+	[[nodiscard]] constexpr bool is_one_of(const Type& type,const Types&... types) {
+		return ((type == types) || ...);
 	}
 
-	template<typename Type,typename... Types>
-	constexpr bool is_one_of(const Type& type,const Types&... types) {
-		return ((type == types) || ...);
+	[[nodiscard]] constexpr std::size_t megabytes(std::size_t count) {
+		return count * 1024 * 1024;
+	}
+
+	[[nodiscard]] constexpr std::size_t align_addr(std::size_t addr,std::size_t alignment) {
+		return static_cast<std::size_t>((addr + (alignment - 1)) & -static_cast<std::ptrdiff_t>(alignment));
+	}
+
+#define discard (void)
+
+#define LOGO_DEFINE_ENUM_FLAGS(T)\
+	T operator~(T v) {\
+		using Underlying_Type = std::underlying_type_t<T>;\
+		return static_cast<T>(~static_cast<Underlying_Type>(v));\
+	}\
+	T operator|(T a,T b) {\
+		using Underlying_Type = std::underlying_type_t<T>;\
+		return static_cast<T>(static_cast<Underlying_Type>(a) | static_cast<Underlying_Type>(b));\
+	}\
+	T operator&(T a,T b) {\
+		using Underlying_Type = std::underlying_type_t<T>;\
+		return static_cast<T>(static_cast<Underlying_Type>(a) & static_cast<Underlying_Type>(b));\
+	}\
+	T& operator|=(T& a,T b) {\
+		a = (a | b);\
+		return a;\
+	}\
+	T& operator&=(T& a,T b) {\
+		a = (a & b);\
+		return a;\
 	}
 }
 

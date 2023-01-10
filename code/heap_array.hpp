@@ -51,11 +51,12 @@ namespace logo {
 		}
 		bool push_back(Array_View<T> view) {
 			std::size_t new_capacity = capacity;
-			while((length + view.length) > new_capacity)
+			while((length + view.length) > new_capacity) {
 				new_capacity = (new_capacity == 0) ? 1 : (new_capacity * 2);
-			if(new_capacity > capacity)
+			}
+			if(new_capacity > capacity) {
 				if(!reserve(new_capacity)) return false;
-
+			}
 			for(auto i : Range(view.length)) data[length + i] = view[i];
 			length += view.length;
 			return true;
