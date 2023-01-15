@@ -12,11 +12,35 @@ namespace logo {
 			case Token_Type::Slash: return Ast_Binary_Operator_Type::Divide;
 			case Token_Type::Percent: return Ast_Binary_Operator_Type::Remainder;
 			case Token_Type::Caret: return Ast_Binary_Operator_Type::Exponentiate;
+			case Token_Type::Logical_And: return Ast_Binary_Operator_Type::Logical_And;
+			case Token_Type::Logical_Or: return Ast_Binary_Operator_Type::Logical_Or;
+			case Token_Type::Compare_Equal: return Ast_Binary_Operator_Type::Compare_Equal;
+			case Token_Type::Compare_Unequal: return Ast_Binary_Operator_Type::Compare_Unequal;
+			case Token_Type::Compare_Less_Than: return Ast_Binary_Operator_Type::Compare_Less_Than;
+			case Token_Type::Compare_Less_Than_Or_Equal: return Ast_Binary_Operator_Type::Compare_Less_Than_Or_Equal;
+			case Token_Type::Compare_Greater_Than: return Ast_Binary_Operator_Type::Compare_Greater_Than;
+			case Token_Type::Compare_Greater_Than_Or_Equal: return Ast_Binary_Operator_Type::Compare_Greater_Than_Or_Equal;
+			default: logo::unreachable();
+		}
+	}
+	static Ast_Unary_Prefix_Operator_Type token_type_to_ast_unary_prefix_operator_type(Token_Type type) {
+		switch(type) {
+			case Token_Type::Plus: return Ast_Unary_Prefix_Operator_Type::Plus;
+			case Token_Type::Minus: return Ast_Unary_Prefix_Operator_Type::Minus;
+			case Token_Type::Logical_Not: return Ast_Unary_Prefix_Operator_Type::Logical_Not;
 			default: logo::unreachable();
 		}
 	}
 	static std::size_t get_operator_precedence(Ast_Binary_Operator_Type type) {
 		switch(type) {
+			case Ast_Binary_Operator_Type::Logical_And: return 4;
+			case Ast_Binary_Operator_Type::Logical_Or: return 4;
+			case Ast_Binary_Operator_Type::Compare_Equal: return 3;
+			case Ast_Binary_Operator_Type::Compare_Unequal: return 3;
+			case Ast_Binary_Operator_Type::Compare_Less_Than: return 3;
+			case Ast_Binary_Operator_Type::Compare_Less_Than_Or_Equal: return 3;
+			case Ast_Binary_Operator_Type::Compare_Greater_Than: return 3;
+			case Ast_Binary_Operator_Type::Compare_Greater_Than_Or_Equal: return 3;
 			case Ast_Binary_Operator_Type::Plus: return 2;
 			case Ast_Binary_Operator_Type::Minus: return 2;
 			case Ast_Binary_Operator_Type::Multiply: return 1;
@@ -58,7 +82,6 @@ namespace logo {
 		Error,
 		Complete
 	};
-
 	struct Expression_State {
 		bool empty = true;
 		bool complete = false;
@@ -147,7 +170,7 @@ namespace logo {
 	[[nodiscard]] bool insert_operator_into_ast(Parsing_Result* state,Ast_Expression* root,const Token& token,Expression_State* expr_state) {
 		if(root->type == Ast_Expression_Type::None) {
 			root->type = Ast_Expression_Type::Unary_Prefix_Operator;
-			if(token.type != Token_Type::Plus && token.type != Token_Type::Minus) {
+			if(token.type != Token_Type::Plus && token.type != Token_Type::Minus && token.type != Token_Type::Logical_Not) {
 				logo::report_parser_error("Token '%' is not an unary prefix operator.",token.string);
 				return false;
 			}
@@ -156,10 +179,10 @@ namespace logo {
 				Report_Error("Couldn't allocate % bytes of memory.",sizeof(Ast_Unary_Prefix_Operator));
 				return false;
 			}
-			root->unary_prefix_operator->type = ((token.type == Token_Type::Plus) ? Ast_Unary_Prefix_Operator_Type::Plus : Ast_Unary_Prefix_Operator_Type::Minus);
+			root->unary_prefix_operator->type = logo::token_type_to_ast_unary_prefix_operator_type(token.type);
 			return true;
 		}
-		if(logo::is_token_type_literal(expr_state->last_token_type) || expr_state->last_token_type == Token_Type::Identifier) {
+		if(logo::is_token_type_literal(expr_state->last_token_type) || expr_state->last_token_type == Token_Type::Identifier || expr_state->last_token_type == Token_Type::Right_Paren) {
 			Ast_Binary_Operator binary_operator{};
 			binary_operator.type = logo::token_type_to_ast_binary_operator_type(token.type);
 			binary_operator.left = state->memory.construct<Ast_Expression>();
@@ -195,13 +218,13 @@ namespace logo {
 			}
 		}
 		if(logo::is_token_type_binary_operator(expr_state->last_token_type)) {
-			if(token.type != Token_Type::Plus && token.type != Token_Type::Minus) {
+			if(token.type != Token_Type::Plus && token.type != Token_Type::Minus && token.type != Token_Type::Logical_Not) {
 				logo::report_parser_error("Token '%' is not an unary prefix operator.",token.string);
 				return false;
 			}
 
 			Ast_Unary_Prefix_Operator unary_prefix_operator{};
-			unary_prefix_operator.type = ((token.type == Token_Type::Plus) ? Ast_Unary_Prefix_Operator_Type::Plus : Ast_Unary_Prefix_Operator_Type::Minus);
+			unary_prefix_operator.type = logo::token_type_to_ast_unary_prefix_operator_type(token.type);
 			while(true) {
 				if(!root->binary_operator->right) {
 					root->binary_operator->right = state->memory.construct<Ast_Expression>();
@@ -226,7 +249,48 @@ namespace logo {
 		return false;
 	}
 
-	[[nodiscard]] Option<Ast_Expression> parse_expression(Parsing_Result* state) {
+	[[nodiscard]] bool insert_ast_into_ast(Parsing_Result* state,Ast_Expression* root,const Ast_Expression& new_expr) {
+		while(true) {
+			if(root->type == Ast_Expression_Type::None) {
+				*root = new_expr;
+				return true;
+			}
+			if(root->type == Ast_Expression_Type::Unary_Prefix_Operator) {
+				if(!root->unary_prefix_operator->child) {
+					root->unary_prefix_operator->child = state->memory.construct<Ast_Expression>();
+					if(!root->unary_prefix_operator->child) {
+						Report_Error("Couldn't allocate % bytes of memory.",sizeof(Ast_Expression));
+						return false;
+					}
+					*root->unary_prefix_operator->child = new_expr;
+					return true;
+				}
+			}
+			if(root->type == Ast_Expression_Type::Binary_Operator) {
+				if(!root->binary_operator->right) {
+					root->binary_operator->right = state->memory.construct<Ast_Expression>();
+					if(!root->binary_operator->right) {
+						Report_Error("Couldn't allocate % bytes of memory.",sizeof(Ast_Expression));
+						return false;
+					}
+					*root->binary_operator->right = new_expr;
+					return true;
+				}
+				root = root->binary_operator->right;
+				continue;
+			}
+			switch(root->value.type) {
+				case Ast_Value_Type::Int_Literal: logo::report_parser_error("Missing a binary operator between '%' and '('.",root->value.int_value); return false;
+				case Ast_Value_Type::Float_Literal: logo::report_parser_error("Missing a binary operator between '%' and '('.",root->value.float_value); return false;
+				case Ast_Value_Type::Bool_Literal: logo::report_parser_error("Missing a binary operator between '%' and '('.",root->value.bool_value); return false;
+				case Ast_Value_Type::String_Literal: logo::report_parser_error("Missing a binary operator between '%' and '('.",root->value.string); return false;
+				case Ast_Value_Type::Identifier: logo::report_parser_error("Missing a binary operator between '%' and '('.",root->value.identfier_name); return false;
+				default: logo::unreachable();
+			}
+		}
+	}
+
+	[[nodiscard]] Option<Ast_Expression> parse_expression(Parsing_Result* state,bool inside_parenthesis = false) {
 		Ast_Expression root_expr{};
 		Expression_State expr_state{};
 		while(true) {
@@ -237,12 +301,18 @@ namespace logo {
 				return {};
 			}
 			if(first_token.token->type == Token_Type::Semicolon || first_token.token->type == Token_Type::Comma || first_token.token->type == Token_Type::Right_Paren) {
-				if(expr_state.complete) return root_expr;
+				if(expr_state.complete) {
+					if(!inside_parenthesis && first_token.token->type == Token_Type::Right_Paren) {
+						logo::report_parser_error("Closed parenthesis that was never opened.");
+						return {};
+					}
+					return root_expr;
+				}
 				char32_t character = '\0';
 				switch(first_token.token->type) {
-					case Token_Type::Semicolon: character = ';'; break;
-					case Token_Type::Comma: character = ','; break;
-					case Token_Type::Right_Paren: character = ')'; break;
+					case Token_Type::Semicolon: character = U';'; break;
+					case Token_Type::Comma: character = U','; break;
+					case Token_Type::Right_Paren: character = U')'; break;
 					default: logo::unreachable();
 				}
 				logo::report_parser_error("Unexpected token '%'.",character);
@@ -266,10 +336,28 @@ namespace logo {
 				case Token_Type::Asterisk:
 				case Token_Type::Slash:
 				case Token_Type::Percent:
-				case Token_Type::Caret: {
+				case Token_Type::Caret:
+				case Token_Type::Logical_And:
+				case Token_Type::Logical_Or:
+				case Token_Type::Logical_Not:
+				case Token_Type::Compare_Equal:
+				case Token_Type::Compare_Unequal:
+				case Token_Type::Compare_Less_Than:
+				case Token_Type::Compare_Less_Than_Or_Equal:
+				case Token_Type::Compare_Greater_Than:
+				case Token_Type::Compare_Greater_Than_Or_Equal: {
 					if(!logo::insert_operator_into_ast(state,&root_expr,*first_token.token,&expr_state)) return {};
 					expr_state.complete = false;
 					break;
+				}
+				case Token_Type::Left_Paren: {
+					auto [expr_ast,success] = logo::parse_expression(state,true);
+					if(!success) return {};
+					if(logo::require_next_token(Token_Type::Right_Paren,"Unmatched parenthesis.").status == Lexing_Status::Error) return {};
+					if(!logo::insert_ast_into_ast(state,&root_expr,expr_ast)) return {};
+					expr_state.complete = true;
+					expr_state.last_token_type = Token_Type::Right_Paren;
+					continue;
 				}
 				default: {
 					logo::report_parser_error("Invalid token '%'.\n",first_token.token->string);
@@ -311,6 +399,9 @@ namespace logo {
 				else if(expr.unary_prefix_operator->type == Ast_Unary_Prefix_Operator_Type::Minus) {
 					logo::print("-\n");
 				}
+				else if(expr.unary_prefix_operator->type == Ast_Unary_Prefix_Operator_Type::Logical_Not) {
+					logo::print("not\n");
+				}
 				logo::print_ast_expression(*expr.unary_prefix_operator->child,depth + 1);
 				break;
 			}
@@ -334,6 +425,30 @@ namespace logo {
 				else if(expr.binary_operator->type == Ast_Binary_Operator_Type::Exponentiate) {
 					logo::print("^\n");
 				}
+				else if(expr.binary_operator->type == Ast_Binary_Operator_Type::Logical_And) {
+					logo::print("and\n");
+				}
+				else if(expr.binary_operator->type == Ast_Binary_Operator_Type::Logical_Or) {
+					logo::print("or\n");
+				}
+				else if(expr.binary_operator->type == Ast_Binary_Operator_Type::Compare_Equal) {
+					logo::print("==\n");
+				}
+				else if(expr.binary_operator->type == Ast_Binary_Operator_Type::Compare_Unequal) {
+					logo::print("!=\n");
+				}
+				else if(expr.binary_operator->type == Ast_Binary_Operator_Type::Compare_Less_Than) {
+					logo::print("<\n");
+				}
+				else if(expr.binary_operator->type == Ast_Binary_Operator_Type::Compare_Less_Than_Or_Equal) {
+					logo::print("<=\n");
+				}
+				else if(expr.binary_operator->type == Ast_Binary_Operator_Type::Compare_Greater_Than) {
+					logo::print(">\n");
+				}
+				else if(expr.binary_operator->type == Ast_Binary_Operator_Type::Compare_Greater_Than_Or_Equal) {
+					logo::print(">=\n");
+				}
 				logo::print_ast_expression(*expr.binary_operator->left,depth + 1);
 				logo::print_ast_expression(*expr.binary_operator->right,depth + 1);
 				break;
@@ -355,13 +470,14 @@ namespace logo {
 			case Token_Type::Int_Literal:
 			case Token_Type::Float_Literal:
 			case Token_Type::Bool_Literal:
+			case Token_Type::Left_Paren:
 			case Token_Type::Plus:
-			case Token_Type::Minus: {
+			case Token_Type::Minus:
+			case Token_Type::Logical_Not: {
 				auto [expr_ast,success] = logo::parse_expression(state);
 				if(!success) return Parsing_Status::Error;
-
+				//@TODO: Return this to the caller instead of discarding it after printing it.
 				logo::print_ast_expression(expr_ast);
-
 				if(logo::require_next_token(Token_Type::Semicolon,"Expected a semicolon at the end of a statement.").status == Lexing_Status::Error) return Parsing_Status::Error;
 				break;
 			}

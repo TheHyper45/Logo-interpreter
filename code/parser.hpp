@@ -52,7 +52,15 @@ namespace logo {
 		Multiply,
 		Divide,
 		Remainder,
-		Exponentiate
+		Exponentiate,
+		Logical_And,
+		Logical_Or,
+		Compare_Equal,
+		Compare_Unequal,
+		Compare_Less_Than,
+		Compare_Less_Than_Or_Equal,
+		Compare_Greater_Than,
+		Compare_Greater_Than_Or_Equal
 	};
 	struct Ast_Binary_Operator {
 		Ast_Binary_Operator_Type type;
@@ -62,7 +70,8 @@ namespace logo {
 
 	enum struct Ast_Unary_Prefix_Operator_Type {
 		Plus,
-		Minus
+		Minus,
+		Logical_Not
 	};
 	struct Ast_Unary_Prefix_Operator {
 		Ast_Unary_Prefix_Operator_Type type;
