@@ -109,16 +109,6 @@ namespace logo {
 		return true;
 	}
 
-	bool compare_strings_equal(String_View string0,String_View string1) {
-		if(string0.byte_length() != string1.byte_length()) return false;
-		for(std::size_t i = 0;i < string0.byte_length();i += 1) {
-			if(string0.begin_ptr[i] != string1.begin_ptr[i]) {
-				return false;
-			}
-		}
-		return true;
-	}
-
 	Runtime_Format_String::Runtime_Format_String(String_View string) : buffer(string.begin_ptr),length(string.byte_length()) {}
 
 	String_Format_Arg make_string_format_arg(std::size_t value) {
@@ -157,6 +147,24 @@ namespace logo {
 		arg.value.double_v = value;
 		return arg;
 	}
+	String_Format_Arg make_string_format_arg(std::int64_t value) {
+		String_Format_Arg arg{};
+		arg.type = String_Format_Arg::Type::Int64;
+		arg.value.int64_v = value;
+		return arg;
+	}
+	String_Format_Arg make_string_format_arg(bool value) {
+		String_Format_Arg arg{};
+		arg.type = String_Format_Arg::Type::Bool;
+		arg.value.bool_v = value;
+		return arg;
+	}
+	String_Format_Arg make_string_format_arg(const char* value) {
+		String_Format_Arg arg{};
+		arg.type = String_Format_Arg::Type::String_View;
+		arg.value.string_view_v = String_View(value,std::strlen(value));
+		return arg;
+	}
 
 	std::size_t _format_into(bool(*callback)(char32_t,const void*),const void* callback_arg,String_View format,Array_View<String_Format_Arg> args) {
 		std::size_t count = 0;
@@ -171,7 +179,7 @@ namespace logo {
 						int result = std::snprintf(buffer,sizeof(buffer) - 1,"%zu",arg.value.size_t_v);
 						if(result < 0) return count;
 						for(auto i : Range(result)) {
-							if(!callback(buffer[i],callback_arg)) return count;
+							if(!callback(static_cast<char32_t>(buffer[i]),callback_arg)) return count;
 							count += 1;
 						}
 						break;
@@ -181,7 +189,7 @@ namespace logo {
 						int result = std::snprintf(buffer,sizeof(buffer) - 1,"%" PRIuLEAST32,arg.value.uint_least32_t_v);
 						if(result < 0) return count;
 						for(auto i : Range(result)) {
-							if(!callback(buffer[i],callback_arg)) return count;
+							if(!callback(static_cast<char32_t>(buffer[i]),callback_arg)) return count;
 							count += 1;
 						}
 						break;
@@ -198,7 +206,7 @@ namespace logo {
 						int result = std::snprintf(buffer,sizeof(buffer) - 1,"%d",arg.value.char_v);
 						if(result < 0) return count;
 						for(auto i : Range(result)) {
-							if(!callback(buffer[i],callback_arg)) return count;
+							if(!callback(static_cast<char32_t>(buffer[i]),callback_arg)) return count;
 							count += 1;
 						}
 						break;
@@ -213,8 +221,35 @@ namespace logo {
 						int result = std::snprintf(buffer,sizeof(buffer) - 1,"%f",arg.value.double_v);
 						if(result < 0) return count;
 						for(auto i : Range(result)) {
-							if(!callback(buffer[i],callback_arg)) return count;
+							if(!callback(static_cast<char32_t>(buffer[i]),callback_arg)) return count;
 							count += 1;
+						}
+						break;
+					}
+					case String_Format_Arg::Type::Int64: {
+						char buffer[32]{};
+						int result = std::snprintf(buffer,sizeof(buffer) - 1,"%" PRId64,arg.value.int64_v);
+						if(result < 0) return count;
+						for(auto i : Range(result)) {
+							if(!callback(static_cast<char32_t>(buffer[i]),callback_arg)) return count;
+							count += 1;
+						}
+						break;
+					}
+					case String_Format_Arg::Type::Bool: {
+						if(arg.value.bool_v) {
+							char buffer[] = "true";
+							for(auto i : Range(sizeof(buffer) - 1)) {
+								if(!callback(static_cast<char32_t>(buffer[i]),callback_arg)) return count;
+								count += 1;
+							}
+						}
+						else {
+							char buffer[] = "false";
+							for(auto i : Range(sizeof(buffer) - 1)) {
+								if(!callback(static_cast<char32_t>(buffer[i]),callback_arg)) return count;
+								count += 1;
+							}
 						}
 						break;
 					}

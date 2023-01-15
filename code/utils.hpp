@@ -73,12 +73,6 @@ namespace logo {
 		return count * 1024 * 1024;
 	}
 
-	[[nodiscard]] constexpr std::size_t align_addr(std::size_t addr,std::size_t alignment) {
-		return static_cast<std::size_t>((addr + (alignment - 1)) & -static_cast<std::ptrdiff_t>(alignment));
-	}
-
-#define discard (void)
-
 #define LOGO_DEFINE_ENUM_FLAGS(T)\
 	T operator~(T v) {\
 		using Underlying_Type = std::underlying_type_t<T>;\

@@ -1,4 +1,5 @@
 #include <cstdlib>
+#include <cstring>
 #include "debug.hpp"
 #include "lexer.hpp"
 #include "heap_array.hpp"
@@ -7,7 +8,8 @@
 namespace logo {
 	enum struct Lexing_Token_Status {
 		Not_Important,
-		Number,
+		Number_Integer,
+		Number_Floating_Point,
 		Identifier,
 		String_Literal,
 		Comment,
@@ -24,30 +26,38 @@ namespace logo {
 		std::size_t current_token_index;
 	} lexer;
 
-	[[nodiscard]] std::size_t get_binary_operator_precedence(Token_Type type) {
+	bool is_token_type_binary_operator(Token_Type type) {
 		switch(type) {
+			case Token_Type::Plus:
+			case Token_Type::Minus:
+			case Token_Type::Asterisk:
+			case Token_Type::Slash:
+			case Token_Type::Percent:
+			case Token_Type::Caret:
 			case Token_Type::Logical_And:
 			case Token_Type::Logical_Or:
-				return 4;
 			case Token_Type::Compare_Equal:
 			case Token_Type::Compare_Unequal:
 			case Token_Type::Compare_Less_Than:
 			case Token_Type::Compare_Less_Than_Or_Equal:
 			case Token_Type::Compare_Greater_Than:
 			case Token_Type::Compare_Greater_Than_Or_Equal:
-				return 3;
-			case Token_Type::Plus:
-			case Token_Type::Minus:
-				return 2;
-			case Token_Type::Percent:
-			case Token_Type::Asterisk:
-			case Token_Type::Slash:
-				return 1;
-			case Token_Type::Caret:
-				return 0;
-			default:
-				logo::unreachable();
+				return true;
+			default: return false;
 		}
+	}
+	bool is_token_type_literal(Token_Type type) {
+		switch(type) {
+			case Token_Type::Int_Literal:
+			case Token_Type::Float_Literal:
+			case Token_Type::Bool_Literal:
+			case Token_Type::String_Literal:
+				return true;
+			default: return false;
+		}
+	}
+	bool is_token_type_value_like(Token_Type type) {
+		return logo::is_token_type_literal(type) || type == Token_Type::Identifier;
 	}
 
 	template<typename... Args>
@@ -98,44 +108,64 @@ namespace logo {
 		token.string = String_View(&lexer.token_string_bytes[lexer.current_token_string_index],(lexer.token_string_bytes.length - 1) - lexer.current_token_string_index);
 		token.line_index = lexer.current_line_index;
 		token.type = Token_Type::None;
-		if(lexer.token_status == Lexing_Token_Status::Number) {
+		if(lexer.token_status == Lexing_Token_Status::Number_Integer) {
 			char* end_ptr = nullptr;
-			token.number_value = std::strtod(token.string.begin_ptr,&end_ptr);
+			token.int_value = std::strtoll(token.string.begin_ptr,&end_ptr,10);
+			if(token.string.begin_ptr == end_ptr) {
+				Report_Error("Couldn't convert '%' to a 64 bit integer.",token.string);
+				return false;
+			}
+			token.type = Token_Type::Int_Literal;
+		}
+		else if(lexer.token_status == Lexing_Token_Status::Number_Floating_Point) {
+			char* end_ptr = nullptr;
+			token.float_value = std::strtod(token.string.begin_ptr,&end_ptr);
 			if(token.string.begin_ptr == end_ptr) {
 				Report_Error("Couldn't convert '%' to a double float.",token.string);
 				return false;
 			}
-			token.type = Token_Type::Number_Literal;
+			token.type = Token_Type::Float_Literal;
 		}
-		else if(logo::compare_strings_equal(token.string,"if")) {
+		else if(std::strcmp(token.string.begin_ptr,"if") == 0) {
 			token.type = Token_Type::Keyword_If;
 		}
-		else if(logo::compare_strings_equal(token.string,"for")) {
+		else if(std::strcmp(token.string.begin_ptr,"for") == 0) {
 			token.type = Token_Type::Keyword_For;
 		}
-		else if(logo::compare_strings_equal(token.string,"while")) {
+		else if(std::strcmp(token.string.begin_ptr,"while") == 0) {
 			token.type = Token_Type::Keyword_While;
 		}
-		else if(logo::compare_strings_equal(token.string,"let")) {
+		else if(std::strcmp(token.string.begin_ptr,"let") == 0) {
 			token.type = Token_Type::Keyword_Let;
 		}
-		else if(logo::compare_strings_equal(token.string,"return")) {
+		else if(std::strcmp(token.string.begin_ptr,"return") == 0) {
 			token.type = Token_Type::Keyword_Return;
 		}
-		else if(logo::compare_strings_equal(token.string,"break")) {
+		else if(std::strcmp(token.string.begin_ptr,"break") == 0) {
 			token.type = Token_Type::Keyword_Break;
 		}
-		else if(logo::compare_strings_equal(token.string,"continue")) {
+		else if(std::strcmp(token.string.begin_ptr,"continue") == 0) {
 			token.type = Token_Type::Keyword_Continue;
 		}
-		else if(logo::compare_strings_equal(token.string,"and")) {
+		else if(std::strcmp(token.string.begin_ptr,"func") == 0) {
+			token.type = Token_Type::Keyword_Func;
+		}
+		else if(std::strcmp(token.string.begin_ptr,"and") == 0) {
 			token.type = Token_Type::Logical_And;
 		}
-		else if(logo::compare_strings_equal(token.string,"or")) {
+		else if(std::strcmp(token.string.begin_ptr,"or") == 0) {
 			token.type = Token_Type::Logical_Or;
 		}
-		else if(logo::compare_strings_equal(token.string,"not")) {
+		else if(std::strcmp(token.string.begin_ptr,"not") == 0) {
 			token.type = Token_Type::Logical_Not;
+		}
+		else if(std::strcmp(token.string.begin_ptr,"true") == 0) {
+			token.type = Token_Type::Bool_Literal;
+			token.bool_value = true;
+		}
+		else if(std::strcmp(token.string.begin_ptr,"false") == 0) {
+			token.type = Token_Type::Bool_Literal;
+			token.bool_value = false;
 		}
 		else if(lexer.token_status == Lexing_Token_Status::Identifier) {
 			token.type = Token_Type::Identifier;
@@ -149,34 +179,34 @@ namespace logo {
 		else if(lexer.token_status == Lexing_Token_Status::Comment) {
 			token.type = Token_Type::Comment;
 		}
-		else if(logo::compare_strings_equal(token.string,"==")) {
+		else if(std::strcmp(token.string.begin_ptr,"==") == 0) {
 			token.type = Token_Type::Compare_Equal;
 		}
-		else if(logo::compare_strings_equal(token.string,"!=")) {
+		else if(std::strcmp(token.string.begin_ptr,"!=") == 0) {
 			token.type = Token_Type::Compare_Unequal;
 		}
-		else if(logo::compare_strings_equal(token.string,"<=")) {
+		else if(std::strcmp(token.string.begin_ptr,"<=") == 0) {
 			token.type = Token_Type::Compare_Less_Than_Or_Equal;
 		}
-		else if(logo::compare_strings_equal(token.string,">=")) {
+		else if(std::strcmp(token.string.begin_ptr,">=") == 0) {
 			token.type = Token_Type::Compare_Greater_Than_Or_Equal;
 		}
-		else if(logo::compare_strings_equal(token.string,"+=")) {
+		else if(std::strcmp(token.string.begin_ptr,"+=") == 0) {
 			token.type = Token_Type::Compound_Plus;
 		}
-		else if(logo::compare_strings_equal(token.string,"-=")) {
+		else if(std::strcmp(token.string.begin_ptr,"-=") == 0) {
 			token.type = Token_Type::Compound_Minus;
 		}
-		else if(logo::compare_strings_equal(token.string,"*=")) {
+		else if(std::strcmp(token.string.begin_ptr,"*=") == 0) {
 			token.type = Token_Type::Compound_Multiply;
 		}
-		else if(logo::compare_strings_equal(token.string,"/=")) {
+		else if(std::strcmp(token.string.begin_ptr,"/=") == 0) {
 			token.type = Token_Type::Compound_Divide;
 		}
-		else if(logo::compare_strings_equal(token.string,"%=")) {
+		else if(std::strcmp(token.string.begin_ptr,"%=") == 0) {
 			token.type = Token_Type::Compound_Remainder;
 		}
-		else if(logo::compare_strings_equal(token.string,"^=")) {
+		else if(std::strcmp(token.string.begin_ptr,"^=") == 0) {
 			token.type = Token_Type::Compound_Exponentiate;
 		}
 		else if(lexer.last_token_code_point == '\n') {
@@ -262,7 +292,7 @@ namespace logo {
 			lexer.token_status = Lexing_Token_Status::Identifier;
 		}
 		else if(logo::is_code_point_digit(code_point)) {
-			lexer.token_status = Lexing_Token_Status::Number;
+			lexer.token_status = Lexing_Token_Status::Number_Integer;
 		}
 		else if(logo::is_code_point_whitespace(code_point)) {
 			lexer.token_status = Lexing_Token_Status::Whitespace;
@@ -282,7 +312,7 @@ namespace logo {
 				lexer.token_status = Lexing_Token_Status::Identifier;
 			}
 			else if(logo::is_code_point_digit(code_point)) {
-				lexer.token_status = Lexing_Token_Status::Number;
+				lexer.token_status = Lexing_Token_Status::Number_Integer;
 			}
 			else if(logo::is_code_point_whitespace(code_point)) {
 				lexer.token_status = Lexing_Token_Status::Whitespace;
@@ -292,6 +322,7 @@ namespace logo {
 			}
 			else if(code_point == '\"') {
 				lexer.token_status = Lexing_Token_Status::String_Literal;
+				return true;
 			}
 			return logo::append_code_point_to_token(code_point);
 		}
@@ -328,8 +359,12 @@ namespace logo {
 			}
 			return logo::finish_token_then_append(code_point);
 		}
-		if(lexer.token_status == Lexing_Token_Status::Number) {
-			if(logo::is_code_point_digit(code_point) || code_point == '.') {
+		if(lexer.token_status == Lexing_Token_Status::Number_Integer || lexer.token_status == Lexing_Token_Status::Number_Floating_Point) {
+			if(logo::is_code_point_digit(code_point)) {
+				return logo::append_code_point_to_token(code_point);
+			}
+			if(code_point == '.' && lexer.token_status == Lexing_Token_Status::Number_Integer) {
+				lexer.token_status = Lexing_Token_Status::Number_Floating_Point;
 				return logo::append_code_point_to_token(code_point);
 			}
 			return logo::finish_token_then_append(code_point);
@@ -341,12 +376,12 @@ namespace logo {
 			return logo::finish_token_then_append(code_point);
 		}
 		if(lexer.last_token_code_point == '.') {
-			if(lexer.token_status == Lexing_Token_Status::Number) {
+			if(lexer.token_status == Lexing_Token_Status::Number_Floating_Point) {
 				return logo::append_code_point_to_token(code_point);
 			}
 			return logo::finish_token_then_append(code_point);
 		}
-		if(logo::is_one_of(lexer.last_token_code_point,'+','-','*','/','^','%','=','!','<','>')) {
+		if(logo::is_one_of(lexer.last_token_code_point,U'+',U'-',U'*',U'/',U'^',U'%',U'=',U'!',U'<',U'>')) {
 			if(code_point == '=') {
 				return logo::append_code_point_to_token(code_point);
 			}
@@ -433,31 +468,33 @@ namespace logo {
 
 	Lexing_Result get_next_token() {
 		while(true) {
-			if(lexer.current_token_index >= lexer.tokens.length) {
-				return Lexing_Status::Out_Of_Tokens;
-			}
+			if(lexer.current_token_index >= lexer.tokens.length) return Lexing_Status::Out_Of_Tokens;
 			const Token& token = lexer.tokens[lexer.current_token_index++];
 			if(token.type != Token_Type::Comment && token.type != Token_Type::Whitespace && token.type != Token_Type::Newline) {
 				lexer.current_line_index = token.line_index;
 				return token;
 			}
 		}
-		logo::unreachable();
 	}
 
-	Lexing_Result peek_next_token() {
+	void discard_next_token() {
+		(void) get_next_token();
+	}
+
+	Lexing_Result peek_next_token(std::size_t count) {
+		auto current_token_index = lexer.current_token_index;
+		std::size_t index = 0;
 		while(true) {
-			if(lexer.current_token_index >= lexer.tokens.length) {
-				return Lexing_Status::Out_Of_Tokens;
-			}
-			const Token& token = lexer.tokens[lexer.current_token_index];
+			if(current_token_index >= lexer.tokens.length) return Lexing_Status::Out_Of_Tokens;
+			const Token& token = lexer.tokens[current_token_index++];
 			if(token.type != Token_Type::Comment && token.type != Token_Type::Whitespace && token.type != Token_Type::Newline) {
-				lexer.current_line_index = token.line_index;
-				return token;
+				index += 1;
+				if(index >= count) {
+					lexer.current_line_index = token.line_index;
+					return token;
+				}
 			}
-			else lexer.current_token_index += 1;
 		}
-		logo::unreachable();
 	}
 
 	std::size_t get_token_line_index() {

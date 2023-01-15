@@ -1,6 +1,7 @@
 #ifndef LOGO_LEXER_HPP
 #define LOGO_LEXER_HPP
 
+#include <cstddef>
 #include "string.hpp"
 
 namespace logo {
@@ -9,8 +10,10 @@ namespace logo {
 		Whitespace,
 		Comment,
 		Identifier,
-		Number_Literal,
+		Int_Literal,
+		Float_Literal,
 		String_Literal,
+		Bool_Literal,
 		Newline,
 		Left_Paren,
 		Right_Paren,
@@ -49,15 +52,20 @@ namespace logo {
 		Keyword_Let,
 		Keyword_Break,
 		Keyword_Continue,
-		Keyword_Return
+		Keyword_Return,
+		Keyword_Func
 	};
-	[[nodiscard]] std::size_t get_operator_precedence(Token_Type type);
+	[[nodiscard]] bool is_token_type_binary_operator(Token_Type type);
+	[[nodiscard]] bool is_token_type_literal(Token_Type type);
+	[[nodiscard]] bool is_token_type_value_like(Token_Type type);
 
 	struct Token {
 		Token_Type type;
 		String_View string;
 		std::size_t line_index;
-		double number_value;
+		std::int64_t int_value;
+		double float_value;
+		bool bool_value;
 	};
 
 	enum struct Lexing_Status {
@@ -75,7 +83,8 @@ namespace logo {
 	bool init_lexer(Array_View<char> input);
 	void term_lexer();
 	[[nodiscard]] Lexing_Result get_next_token();
-	[[nodiscard]] Lexing_Result peek_next_token();
+	void discard_next_token();
+	[[nodiscard]] Lexing_Result peek_next_token(std::size_t count);
 	[[nodiscard]] std::size_t get_token_line_index();
 }
 

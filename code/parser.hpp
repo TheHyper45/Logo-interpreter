@@ -11,15 +11,23 @@ namespace logo {
 	struct Ast_Unary_Prefix_Operator;
 
 	enum struct Ast_Value_Type {
-		Number_Literal,
-		Identifier
+		None,
+		Identifier,
+		Int_Literal,
+		Float_Literal,
+		Bool_Literal,
+		String_Literal
 	};
 	struct Ast_Value {
 		Ast_Value_Type type;
 		union {
 			String_View identfier_name;
-			double number;
+			String_View string;
+			std::int64_t int_value;
+			double float_value;
+			bool bool_value;
 		};
+		Ast_Value() : type(),identfier_name() {}
 	};
 
 	enum struct Ast_Expression_Type {
@@ -35,11 +43,16 @@ namespace logo {
 			Ast_Binary_Operator* binary_operator;
 			Ast_Unary_Prefix_Operator* unary_prefix_operator;
 		};
+		Ast_Expression() : type(),value() {}
 	};
 
 	enum struct Ast_Binary_Operator_Type {
 		Plus,
-		Minus
+		Minus,
+		Multiply,
+		Divide,
+		Remainder,
+		Exponentiate
 	};
 	struct Ast_Binary_Operator {
 		Ast_Binary_Operator_Type type;
@@ -53,7 +66,7 @@ namespace logo {
 	};
 	struct Ast_Unary_Prefix_Operator {
 		Ast_Unary_Prefix_Operator_Type type;
-		Ast_Expression* expr;
+		Ast_Expression* child;
 	};
 
 	struct Parsing_Result {

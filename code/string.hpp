@@ -36,7 +36,6 @@ namespace logo {
 
 	bool append_char(char* string,std::size_t* byte_length,std::size_t byte_capacity,char32_t code_point);
 	bool append_string(char* string,std::size_t* byte_length,std::size_t byte_capacity,const char* to_append,std::size_t to_append_byte_length);
-	[[nodiscard]] bool compare_strings_equal(String_View string0,String_View string1);
 
 	template<std::size_t Capacity>
 	struct Array_String {
@@ -78,7 +77,9 @@ namespace logo {
 			String_View,
 			Char,
 			Char32_T,
-			Double
+			Double,
+			Int64,
+			Bool
 		};
 		union Value {
 			std::size_t size_t_v;
@@ -87,6 +88,8 @@ namespace logo {
 			char char_v;
 			char32_t char32_t_v;
 			double double_v;
+			std::int64_t int64_v;
+			bool bool_v;
 		};
 		Type type;
 		Value value;
@@ -98,6 +101,16 @@ namespace logo {
 	[[nodiscard]] String_Format_Arg make_string_format_arg(char value);
 	[[nodiscard]] String_Format_Arg make_string_format_arg(char32_t value);
 	[[nodiscard]] String_Format_Arg make_string_format_arg(double value);
+	[[nodiscard]] String_Format_Arg make_string_format_arg(std::int64_t value);
+	[[nodiscard]] String_Format_Arg make_string_format_arg(bool value);
+	[[nodiscard]] String_Format_Arg make_string_format_arg(const char* value);
+	template<std::size_t Count>
+	[[nodiscard]] String_Format_Arg make_string_format_arg(const char(&value)[Count]) {
+		String_Format_Arg arg{};
+		arg.type = String_Format_Arg::Type::String_View;
+		arg.value.string_view_v = String_View(value,Count - 1);
+		return arg;
+	}
 	template<std::size_t Count>
 	[[nodiscard]] String_Format_Arg make_string_format_arg(const Array_String<Count>& string) {
 		String_Format_Arg result{};

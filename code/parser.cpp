@@ -4,6 +4,29 @@
 #include "heap_array.hpp"
 
 namespace logo {
+	static Ast_Binary_Operator_Type token_type_to_ast_binary_operator_type(Token_Type type) {
+		switch(type) {
+			case Token_Type::Plus: return Ast_Binary_Operator_Type::Plus;
+			case Token_Type::Minus: return Ast_Binary_Operator_Type::Minus;
+			case Token_Type::Asterisk: return Ast_Binary_Operator_Type::Multiply;
+			case Token_Type::Slash: return Ast_Binary_Operator_Type::Divide;
+			case Token_Type::Percent: return Ast_Binary_Operator_Type::Remainder;
+			case Token_Type::Caret: return Ast_Binary_Operator_Type::Exponentiate;
+			default: logo::unreachable();
+		}
+	}
+	static std::size_t get_operator_precedence(Ast_Binary_Operator_Type type) {
+		switch(type) {
+			case Ast_Binary_Operator_Type::Plus: return 2;
+			case Ast_Binary_Operator_Type::Minus: return 2;
+			case Ast_Binary_Operator_Type::Multiply: return 1;
+			case Ast_Binary_Operator_Type::Divide: return 1;
+			case Ast_Binary_Operator_Type::Remainder: return 1;
+			case Ast_Binary_Operator_Type::Exponentiate: return 0;
+			default: logo::unreachable();
+		}
+	}
+
 	void Parsing_Result::destroy() {
 		memory.destroy();
 	}
@@ -36,6 +59,320 @@ namespace logo {
 		Complete
 	};
 
+	struct Expression_State {
+		bool empty = true;
+		bool complete = false;
+		Token_Type last_token_type = Token_Type::None;
+	};
+
+	[[nodiscard]] Option<Ast_Value> create_ast_value(Parsing_Result* state,const Token& token) {
+		Ast_Value value{};
+		if(token.type == Token_Type::Int_Literal) {
+			value.type = Ast_Value_Type::Int_Literal;
+			value.int_value = token.int_value;
+		}
+		else if(token.type == Token_Type::Float_Literal) {
+			value.type = Ast_Value_Type::Float_Literal;
+			value.float_value = token.float_value;
+		}
+		else if(token.type == Token_Type::Bool_Literal) {
+			value.type = Ast_Value_Type::Bool_Literal;
+			value.bool_value = token.bool_value;
+		}
+		else {
+			char* string_ptr = state->memory.construct_string(token.string.byte_length());
+			if(!string_ptr) {
+				Report_Error("Couldn't allocate % bytes of memory.",token.string.byte_length() + 1);
+				return {};
+			}
+			std::memcpy(string_ptr,token.string.begin_ptr,token.string.byte_length());
+
+			if(token.type == Token_Type::String_Literal) {
+				value.type = Ast_Value_Type::String_Literal;
+				value.string = String_View(string_ptr,token.string.byte_length());
+			}
+			else if(token.type == Token_Type::Identifier) {
+				value.type = Ast_Value_Type::Identifier;
+				value.identfier_name = String_View(string_ptr,token.string.byte_length());
+			}
+			else logo::unreachable();
+		}
+		return value;
+	}
+
+	[[nodiscard]] bool insert_value_into_ast(Parsing_Result* state,Ast_Expression* root,const Token& token) {
+		if(root->type == Ast_Expression_Type::None) {
+			root->type = Ast_Expression_Type::Value;
+			auto [value,has_value] = logo::create_ast_value(state,token);
+			if(!has_value) return false;
+			root->value = value;
+			return true;
+		}
+		if(root->type == Ast_Expression_Type::Binary_Operator) {
+			if(!root->binary_operator->right) {
+				root->binary_operator->right = state->memory.construct<Ast_Expression>();
+				if(!root->binary_operator->right) {
+					Report_Error("Couldn't allocate % bytes of memory.",sizeof(Ast_Expression));
+					return false;
+				}
+				root->binary_operator->right->type = Ast_Expression_Type::Value;
+
+				auto [value,has_value] = logo::create_ast_value(state,token);
+				if(!has_value) return false;
+				root->binary_operator->right->value = value;
+				return true;
+			}
+			return logo::insert_value_into_ast(state,root->binary_operator->right,token);
+		}
+		if(root->type == Ast_Expression_Type::Unary_Prefix_Operator) {
+			if(!root->unary_prefix_operator->child) {
+				root->unary_prefix_operator->child = state->memory.construct<Ast_Expression>();
+				if(!root->unary_prefix_operator->child) {
+					Report_Error("Couldn't allocate % bytes of memory.",sizeof(Ast_Expression));
+					return false;
+				}
+				root->unary_prefix_operator->child->type = Ast_Expression_Type::Value;
+
+				auto [value,has_value] = logo::create_ast_value(state,token);
+				if(!has_value) return false;
+				root->unary_prefix_operator->child->value = value;
+				return true;
+			}
+			return logo::insert_value_into_ast(state,root->unary_prefix_operator->child,token);
+		}
+		logo::report_parser_error("Unexpected token '%'.",token.string);
+		return false;
+	}
+
+	[[nodiscard]] bool insert_operator_into_ast(Parsing_Result* state,Ast_Expression* root,const Token& token,Expression_State* expr_state) {
+		if(root->type == Ast_Expression_Type::None) {
+			root->type = Ast_Expression_Type::Unary_Prefix_Operator;
+			if(token.type != Token_Type::Plus && token.type != Token_Type::Minus) {
+				logo::report_parser_error("Token '%' is not an unary prefix operator.",token.string);
+				return false;
+			}
+			root->unary_prefix_operator = state->memory.construct<Ast_Unary_Prefix_Operator>();
+			if(!root->unary_prefix_operator) {
+				Report_Error("Couldn't allocate % bytes of memory.",sizeof(Ast_Unary_Prefix_Operator));
+				return false;
+			}
+			root->unary_prefix_operator->type = ((token.type == Token_Type::Plus) ? Ast_Unary_Prefix_Operator_Type::Plus : Ast_Unary_Prefix_Operator_Type::Minus);
+			return true;
+		}
+		if(logo::is_token_type_literal(expr_state->last_token_type) || expr_state->last_token_type == Token_Type::Identifier) {
+			Ast_Binary_Operator binary_operator{};
+			binary_operator.type = logo::token_type_to_ast_binary_operator_type(token.type);
+			binary_operator.left = state->memory.construct<Ast_Expression>();
+			if(!binary_operator.left) {
+				Report_Error("Couldn't allocate % bytes of memory.",sizeof(Ast_Expression));
+				return false;
+			}
+
+			while(true) {
+				if(root->type == Ast_Expression_Type::Value || root->type == Ast_Expression_Type::Unary_Prefix_Operator) {
+					*binary_operator.left = *root;
+					root->type = Ast_Expression_Type::Binary_Operator;
+					root->binary_operator = state->memory.construct<Ast_Binary_Operator>();
+					if(!root->binary_operator) {
+						Report_Error("Couldn't allocate % bytes of memory.",sizeof(Ast_Binary_Operator));
+						return false;
+					}
+					*root->binary_operator = binary_operator;
+					return true;
+				}
+				if(logo::get_operator_precedence(root->binary_operator->type) <= logo::get_operator_precedence(binary_operator.type)) {
+					*binary_operator.left = *root;
+					root->type = Ast_Expression_Type::Binary_Operator;
+					root->binary_operator = state->memory.construct<Ast_Binary_Operator>();
+					if(!root->binary_operator) {
+						Report_Error("Couldn't allocate % bytes of memory.",sizeof(Ast_Binary_Operator));
+						return false;
+					}
+					*root->binary_operator = binary_operator;
+					return true;
+				}
+				root = root->binary_operator->right;
+			}
+		}
+		if(logo::is_token_type_binary_operator(expr_state->last_token_type)) {
+			if(token.type != Token_Type::Plus && token.type != Token_Type::Minus) {
+				logo::report_parser_error("Token '%' is not an unary prefix operator.",token.string);
+				return false;
+			}
+
+			Ast_Unary_Prefix_Operator unary_prefix_operator{};
+			unary_prefix_operator.type = ((token.type == Token_Type::Plus) ? Ast_Unary_Prefix_Operator_Type::Plus : Ast_Unary_Prefix_Operator_Type::Minus);
+			while(true) {
+				if(!root->binary_operator->right) {
+					root->binary_operator->right = state->memory.construct<Ast_Expression>();
+					if(!root->binary_operator->right) {
+						Report_Error("Couldn't allocate % bytes of memory.",sizeof(Ast_Expression));
+						return false;
+					}
+					root->binary_operator->right->type = Ast_Expression_Type::Unary_Prefix_Operator;
+					root->binary_operator->right->unary_prefix_operator = state->memory.construct<Ast_Unary_Prefix_Operator>();
+					if(!root->binary_operator->right->unary_prefix_operator) {
+						Report_Error("Couldn't allocate % bytes of memory.",sizeof(Ast_Unary_Prefix_Operator));
+						return false;
+					}
+					*root->binary_operator->right->unary_prefix_operator = unary_prefix_operator;
+					break;
+				}
+				else root = root->binary_operator->right;
+			}
+			return true;
+		}
+		logo::report_parser_error("Unexpected token '%'.",token.string);
+		return false;
+	}
+
+	[[nodiscard]] Option<Ast_Expression> parse_expression(Parsing_Result* state) {
+		Ast_Expression root_expr{};
+		Expression_State expr_state{};
+		while(true) {
+			auto first_token = logo::peek_next_token(1);
+			if(first_token.status == Lexing_Status::Out_Of_Tokens) {
+				if(expr_state.empty) logo::report_parser_error("Empty expressions are not allowed.");
+				else logo::report_parser_error("Incomplete expression (error message not complete yet).");
+				return {};
+			}
+			if(first_token.token->type == Token_Type::Semicolon || first_token.token->type == Token_Type::Comma || first_token.token->type == Token_Type::Right_Paren) {
+				if(expr_state.complete) return root_expr;
+				char32_t character = '\0';
+				switch(first_token.token->type) {
+					case Token_Type::Semicolon: character = ';'; break;
+					case Token_Type::Comma: character = ','; break;
+					case Token_Type::Right_Paren: character = ')'; break;
+					default: logo::unreachable();
+				}
+				logo::report_parser_error("Unexpected token '%'.",character);
+				return {};
+			}
+
+			expr_state.empty = false;
+			first_token = logo::get_next_token();
+			switch(first_token.token->type) {
+				case Token_Type::Identifier:
+				case Token_Type::Int_Literal:
+				case Token_Type::Float_Literal:
+				case Token_Type::String_Literal:
+				case Token_Type::Bool_Literal: {
+					if(!logo::insert_value_into_ast(state,&root_expr,*first_token.token)) return {};
+					expr_state.complete = true;
+					break;
+				}
+				case Token_Type::Plus:
+				case Token_Type::Minus:
+				case Token_Type::Asterisk:
+				case Token_Type::Slash:
+				case Token_Type::Percent:
+				case Token_Type::Caret: {
+					if(!logo::insert_operator_into_ast(state,&root_expr,*first_token.token,&expr_state)) return {};
+					expr_state.complete = false;
+					break;
+				}
+				default: {
+					logo::report_parser_error("Invalid token '%'.\n",first_token.token->string);
+					return {};
+				}
+			}
+			expr_state.last_token_type = first_token.token->type;
+		}
+		logo::unreachable();
+	}
+
+	static void print_ast_expression(const Ast_Expression& expr,std::size_t depth = 0) {
+		for(std::size_t i = 0;i < (depth * 4);i += 1) logo::print(" ");
+		switch(expr.type) {
+			case Ast_Expression_Type::Value: {
+				logo::print("Value: ");
+				if(expr.value.type == Ast_Value_Type::Identifier) {
+					logo::print("(Identifier) %\n",expr.value.identfier_name);
+				}
+				else if(expr.value.type == Ast_Value_Type::String_Literal) {
+					logo::print("(String) \"%\"\n",expr.value.string);
+				}
+				else if(expr.value.type == Ast_Value_Type::Int_Literal) {
+					logo::print("(Int) %\n",expr.value.int_value);
+				}
+				else if(expr.value.type == Ast_Value_Type::Float_Literal) {
+					logo::print("(Float) %\n",expr.value.float_value);
+				}
+				else if(expr.value.type == Ast_Value_Type::Bool_Literal) {
+					logo::print("(Bool) %\n",expr.value.bool_value);
+				}
+				break;
+			}
+			case Ast_Expression_Type::Unary_Prefix_Operator: {
+				logo::print("Unary operator: ");
+				if(expr.unary_prefix_operator->type == Ast_Unary_Prefix_Operator_Type::Plus) {
+					logo::print("+\n");
+				}
+				else if(expr.unary_prefix_operator->type == Ast_Unary_Prefix_Operator_Type::Minus) {
+					logo::print("-\n");
+				}
+				logo::print_ast_expression(*expr.unary_prefix_operator->child,depth + 1);
+				break;
+			}
+			case Ast_Expression_Type::Binary_Operator: {
+				logo::print("Binary operator: ");
+				if(expr.binary_operator->type == Ast_Binary_Operator_Type::Plus) {
+					logo::print("+\n");
+				}
+				else if(expr.binary_operator->type == Ast_Binary_Operator_Type::Minus) {
+					logo::print("-\n");
+				}
+				else if(expr.binary_operator->type == Ast_Binary_Operator_Type::Multiply) {
+					logo::print("*\n");
+				}
+				else if(expr.binary_operator->type == Ast_Binary_Operator_Type::Divide) {
+					logo::print("/\n");
+				}
+				else if(expr.binary_operator->type == Ast_Binary_Operator_Type::Remainder) {
+					logo::print("%\n","%");
+				}
+				else if(expr.binary_operator->type == Ast_Binary_Operator_Type::Exponentiate) {
+					logo::print("^\n");
+				}
+				logo::print_ast_expression(*expr.binary_operator->left,depth + 1);
+				logo::print_ast_expression(*expr.binary_operator->right,depth + 1);
+				break;
+			}
+		}
+	}
+
+	[[nodiscard]] static Parsing_Status parse_statement(Parsing_Result* state) {
+		auto first_token = logo::peek_next_token(1);
+		if(first_token.status == Lexing_Status::Out_Of_Tokens) return Parsing_Status::Complete;
+
+		switch(first_token.token->type) {
+			case Token_Type::Semicolon: {
+				logo::discard_next_token();
+				break;
+			}
+			case Token_Type::Identifier:
+			case Token_Type::String_Literal:
+			case Token_Type::Int_Literal:
+			case Token_Type::Float_Literal:
+			case Token_Type::Bool_Literal:
+			case Token_Type::Plus:
+			case Token_Type::Minus: {
+				auto [expr_ast,success] = logo::parse_expression(state);
+				if(!success) return Parsing_Status::Error;
+
+				logo::print_ast_expression(expr_ast);
+
+				if(logo::require_next_token(Token_Type::Semicolon,"Expected a semicolon at the end of a statement.").status == Lexing_Status::Error) return Parsing_Status::Error;
+				break;
+			}
+			default: {
+				logo::report_parser_error("Invalid token '%'.\n",first_token.token->string);
+				return Parsing_Status::Error;
+			}
+		}
+		return Parsing_Status::Continue;
+	}
+
 	[[nodiscard]] Option<Parsing_Result> parse_input(Array_View<char> input) {
 		if(input.length == 0) {
 			logo::report_parser_error("Empty input file.");
@@ -45,15 +382,8 @@ namespace logo {
 			return {};
 		}
 		defer[]{logo::term_lexer();};
-		
-		while(true) {
-			auto token = logo::get_next_token();
-			if(token.status == Lexing_Status::Out_Of_Tokens) break;
-			logo::print("(%,%) %\n",token.token->line_index,static_cast<std::size_t>(token.token->type),token.token->string);
-		}
-		return {};
-		
-		/*Parsing_Result result{};
+
+		Parsing_Result result{};
 		bool successful_return = false;
 		defer[&]{if(!successful_return) result.destroy();};
 
@@ -61,9 +391,9 @@ namespace logo {
 			auto status = logo::parse_statement(&result);
 			if(status == Parsing_Status::Error) return {};
 			if(status == Parsing_Status::Complete) break;
-		}*/
+		}
 
-		//successful_return = true;
-		//return result;
+		successful_return = true;
+		return result;
 	}
 }

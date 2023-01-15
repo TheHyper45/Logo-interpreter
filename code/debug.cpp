@@ -14,7 +14,7 @@
 	#include <intrin.h>
 	#define LOGO_BREAKPOINT __debugbreak()
 #else
-	//TODO: Debug breakpoint for other compilers.
+	//@TODO: Debug breakpoint for other compilers.
 	#include <cstdlib>
 	#define LOGO_BREAKPOINT std::abort()
 #endif

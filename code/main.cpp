@@ -1,3 +1,9 @@
+#include <climits>
+#include "utils.hpp"
+#include "debug.hpp"
+#include "parser.hpp"
+#include "heap_array.hpp"
+#include "memory_arena.hpp"
 #if defined(_WIN32) || defined(_WIN64) || defined(WIN32)
 	#define PLATFORM_WINDOWS
 	#define WIN32_LEAN_AND_MEAN
@@ -10,11 +16,8 @@
 	#include <unistd.h>
 	#include <sys/stat.h>
 #endif
-#include "utils.hpp"
-#include "debug.hpp"
-#include "parser.hpp"
-#include "heap_array.hpp"
-#include "memory_arena.hpp"
+
+static_assert(CHAR_BIT == 8);
 
 namespace logo {
 	[[nodiscard]] static Option<Heap_Array<char>> read_file(String_View path) {
