@@ -9,6 +9,7 @@
 namespace logo {
 	struct Ast_Binary_Operator;
 	struct Ast_Unary_Prefix_Operator;
+	struct Ast_Function_Call;
 
 	enum struct Ast_Value_Type {
 		None,
@@ -34,7 +35,8 @@ namespace logo {
 		None,
 		Value,
 		Binary_Operator,
-		Unary_Prefix_Operator
+		Unary_Prefix_Operator,
+		Function_Call
 	};
 	struct Ast_Expression {
 		Ast_Expression_Type type;
@@ -42,6 +44,7 @@ namespace logo {
 			Ast_Value value;
 			Ast_Binary_Operator* binary_operator;
 			Ast_Unary_Prefix_Operator* unary_prefix_operator;
+			Ast_Function_Call* function_call;
 		};
 		Ast_Expression() : type(),value() {}
 	};
@@ -76,6 +79,27 @@ namespace logo {
 	struct Ast_Unary_Prefix_Operator {
 		Ast_Unary_Prefix_Operator_Type type;
 		Ast_Expression* child;
+	};
+
+	struct Ast_Function_Call {
+		String_View name;
+		std::size_t arg_count;
+		Ast_Expression* arguments[4];//@TODO: Unrestricted number of parameters would be useful.
+	};
+
+	enum struct Ast_Assignment_Type {
+		Assignment,
+		Compound_Plus,
+		Compound_Minus,
+		Compound_Multiply,
+		Compound_Divide,
+		Compound_Remainder,
+		Compound_Exponentiate
+	};
+	struct Ast_Assignment {
+		Ast_Assignment_Type type;
+		String_View name;
+		Ast_Expression value_expr;
 	};
 
 	struct Parsing_Result {

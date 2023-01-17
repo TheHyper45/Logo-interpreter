@@ -73,6 +73,11 @@ namespace logo {
 		return count * 1024 * 1024;
 	}
 
+	template<typename T,std::size_t Count>
+	[[nodiscard]] constexpr std::size_t array_length(const T(&array)[Count]) {
+		return Count;
+	}
+
 #define LOGO_DEFINE_ENUM_FLAGS(T)\
 	T operator~(T v) {\
 		using Underlying_Type = std::underlying_type_t<T>;\

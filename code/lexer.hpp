@@ -58,6 +58,7 @@ namespace logo {
 	[[nodiscard]] bool is_token_type_binary_operator(Token_Type type);
 	[[nodiscard]] bool is_token_type_literal(Token_Type type);
 	[[nodiscard]] bool is_token_type_value_like(Token_Type type);
+	[[nodiscard]] bool is_token_type_assignment(Token_Type type);
 
 	struct Token {
 		Token_Type type;

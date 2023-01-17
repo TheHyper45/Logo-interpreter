@@ -59,6 +59,19 @@ namespace logo {
 	bool is_token_type_value_like(Token_Type type) {
 		return logo::is_token_type_literal(type) || type == Token_Type::Identifier;
 	}
+	bool is_token_type_assignment(Token_Type type) {
+		switch(type) {
+			case Token_Type::Equals_Sign:
+			case Token_Type::Compound_Plus:
+			case Token_Type::Compound_Minus:
+			case Token_Type::Compound_Multiply:
+			case Token_Type::Compound_Divide:
+			case Token_Type::Compound_Remainder:
+			case Token_Type::Compound_Exponentiate:
+				return true;
+			default: return false;
+		}
+	}
 
 	template<typename... Args>
 	static void report_lexer_error(Format_String<std::type_identity_t<Args>...> format,Args&&... args) {

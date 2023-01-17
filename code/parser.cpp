@@ -4,7 +4,7 @@
 #include "heap_array.hpp"
 
 namespace logo {
-	static Ast_Binary_Operator_Type token_type_to_ast_binary_operator_type(Token_Type type) {
+	static [[nodiscard]] Ast_Binary_Operator_Type token_type_to_ast_binary_operator_type(Token_Type type) {
 		switch(type) {
 			case Token_Type::Plus: return Ast_Binary_Operator_Type::Plus;
 			case Token_Type::Minus: return Ast_Binary_Operator_Type::Minus;
@@ -23,7 +23,7 @@ namespace logo {
 			default: logo::unreachable();
 		}
 	}
-	static Ast_Unary_Prefix_Operator_Type token_type_to_ast_unary_prefix_operator_type(Token_Type type) {
+	static [[nodiscard]] Ast_Unary_Prefix_Operator_Type token_type_to_ast_unary_prefix_operator_type(Token_Type type) {
 		switch(type) {
 			case Token_Type::Plus: return Ast_Unary_Prefix_Operator_Type::Plus;
 			case Token_Type::Minus: return Ast_Unary_Prefix_Operator_Type::Minus;
@@ -31,7 +31,7 @@ namespace logo {
 			default: logo::unreachable();
 		}
 	}
-	static std::size_t get_operator_precedence(Ast_Binary_Operator_Type type) {
+	static [[nodiscard]] std::size_t get_operator_precedence(Ast_Binary_Operator_Type type) {
 		switch(type) {
 			case Ast_Binary_Operator_Type::Logical_And: return 4;
 			case Ast_Binary_Operator_Type::Logical_Or: return 4;
@@ -47,6 +47,18 @@ namespace logo {
 			case Ast_Binary_Operator_Type::Divide: return 1;
 			case Ast_Binary_Operator_Type::Remainder: return 1;
 			case Ast_Binary_Operator_Type::Exponentiate: return 0;
+			default: logo::unreachable();
+		}
+	}
+	static [[nodiscard]] Ast_Assignment_Type token_type_to_ast_assignment_type(Token_Type type) {
+		switch(type) {
+			case Token_Type::Equals_Sign: return Ast_Assignment_Type::Assignment;
+			case Token_Type::Compound_Plus: return Ast_Assignment_Type::Compound_Plus;
+			case Token_Type::Compound_Minus: return Ast_Assignment_Type::Compound_Minus;
+			case Token_Type::Compound_Multiply: return Ast_Assignment_Type::Compound_Multiply;
+			case Token_Type::Compound_Divide: return Ast_Assignment_Type::Compound_Divide;
+			case Token_Type::Compound_Remainder: return Ast_Assignment_Type::Compound_Remainder;
+			case Token_Type::Compound_Exponentiate: return Ast_Assignment_Type::Compound_Exponentiate;
 			default: logo::unreachable();
 		}
 	}
@@ -192,7 +204,7 @@ namespace logo {
 			}
 
 			while(true) {
-				if(root->type == Ast_Expression_Type::Value || root->type == Ast_Expression_Type::Unary_Prefix_Operator) {
+				if(root->type == Ast_Expression_Type::Value || root->type == Ast_Expression_Type::Unary_Prefix_Operator || root->type == Ast_Expression_Type::Function_Call) {
 					*binary_operator.left = *root;
 					root->type = Ast_Expression_Type::Binary_Operator;
 					root->binary_operator = state->memory.construct<Ast_Binary_Operator>();
@@ -322,7 +334,89 @@ namespace logo {
 			expr_state.empty = false;
 			first_token = logo::get_next_token();
 			switch(first_token.token->type) {
-				case Token_Type::Identifier:
+				case Token_Type::Identifier: {
+					auto second_token = logo::peek_next_token(1);
+					if(second_token.status == Lexing_Status::Out_Of_Tokens) {
+						logo::report_parser_error("Expected a token after '%'.",first_token.token->string);
+						return {};
+					}
+
+					Ast_Expression new_expr{};
+					new_expr.type = Ast_Expression_Type::Function_Call;
+					new_expr.function_call = state->memory.construct<Ast_Function_Call>();
+					if(!new_expr.function_call) {
+						Report_Error("Couldn't allocate % bytes of memory.",sizeof(Ast_Function_Call));
+						return {};
+					}
+					{
+						auto function_name_length = first_token.token->string.byte_length();
+						char* function_name_ptr = state->memory.construct_string(function_name_length);
+						if(!function_name_ptr) {
+							Report_Error("Couldn't allocate % bytes of memory.",function_name_length + 1);
+							return {};
+						}
+						std::memcpy(function_name_ptr,first_token.token->string.begin_ptr,function_name_length);
+						new_expr.function_call->name = String_View(function_name_ptr,function_name_length);
+					}
+
+					if(second_token.token->type == Token_Type::Left_Paren) {
+						second_token = logo::get_next_token();
+						{
+							auto third_token = logo::peek_next_token(1);
+							if(third_token.status == Lexing_Status::Out_Of_Tokens) {
+								logo::report_parser_error("Expected a token after '%'.",second_token.token->string);
+								return {};
+							}
+							if(third_token.token->type == Token_Type::Right_Paren) {
+								logo::discard_next_token();
+								if(!logo::insert_ast_into_ast(state,&root_expr,new_expr)) return {};
+								expr_state.complete = true;
+								expr_state.last_token_type = Token_Type::Right_Paren;
+								continue;
+							}
+						}
+
+						while(true) {
+							auto [arg_ast,success] = logo::parse_expression(state,true);
+							if(!success) return {};
+
+							auto max_arg_count = logo::array_length(new_expr.function_call->arguments);
+							if(new_expr.function_call->arg_count >= max_arg_count) {
+								logo::report_parser_error("Function '%' cannot be called with more than % arguments.",first_token.token->string,max_arg_count);
+								return {};
+							}
+							new_expr.function_call->arguments[new_expr.function_call->arg_count] = state->memory.construct<Ast_Expression>();
+							if(!new_expr.function_call->arguments[new_expr.function_call->arg_count]) {
+								Report_Error("Couldn't allocate % bytes of memory.",sizeof(Ast_Expression));
+								return {};
+							}
+							*new_expr.function_call->arguments[new_expr.function_call->arg_count++] = arg_ast;
+
+							auto next_token = logo::get_next_token();
+							if(next_token.status == Lexing_Status::Out_Of_Tokens) {
+								logo::report_parser_error("Expected a token after '%'.",next_token.token->string);
+								return {};
+							}
+
+							if(next_token.token->type == Token_Type::Right_Paren) {
+								break;
+							}
+							else if(next_token.token->type == Token_Type::Comma) {
+								continue;
+							}
+							else {
+								logo::report_parser_error("Unexpected token '%'.",next_token.token->string);
+								return {};
+							}
+						}
+
+						if(!logo::insert_ast_into_ast(state,&root_expr,new_expr)) return {};
+						expr_state.complete = true;
+						expr_state.last_token_type = Token_Type::Right_Paren;
+						continue;
+					}
+					[[fallthrough]];
+				}
 				case Token_Type::Int_Literal:
 				case Token_Type::Float_Literal:
 				case Token_Type::String_Literal:
@@ -453,7 +547,30 @@ namespace logo {
 				logo::print_ast_expression(*expr.binary_operator->right,depth + 1);
 				break;
 			}
+			case Ast_Expression_Type::Function_Call: {
+				logo::print("Function call % (% args):\n",expr.function_call->name,expr.function_call->arg_count);
+				for(std::size_t i = 0;i < expr.function_call->arg_count;i += 1) {
+					logo::print_ast_expression(*expr.function_call->arguments[i],depth + 1);
+				}
+				break;
+			}
 		}
+	}
+
+	static void print_ast_assignment(const Ast_Assignment& assigment) {
+		logo::print("Assignment % ",assigment.name);
+		switch(assigment.type) {
+			case Ast_Assignment_Type::Assignment: logo::print("=\n"); break;
+			case Ast_Assignment_Type::Compound_Plus: logo::print("+=\n"); break;
+			case Ast_Assignment_Type::Compound_Minus: logo::print("-=\n"); break;
+			case Ast_Assignment_Type::Compound_Multiply: logo::print("*=\n"); break;
+			case Ast_Assignment_Type::Compound_Divide: logo::print("/=\n"); break;
+			case Ast_Assignment_Type::Compound_Remainder: logo::print("%=\n","%"); break;
+			case Ast_Assignment_Type::Compound_Exponentiate: logo::print("^=\n"); break;
+			default: logo::unreachable();
+		}
+		for(std::size_t i = 0;i < 4;i += 1) logo::print(" ");
+		logo::print_ast_expression(assigment.value_expr);
 	}
 
 	[[nodiscard]] static Parsing_Status parse_statement(Parsing_Result* state) {
@@ -465,7 +582,41 @@ namespace logo {
 				logo::discard_next_token();
 				break;
 			}
-			case Token_Type::Identifier:
+			case Token_Type::Identifier: {
+				auto second_token = logo::peek_next_token(2);
+				if(second_token.status == Lexing_Status::Out_Of_Tokens) {
+					logo::report_parser_error("Missing(?) a semicolon at the end of the statement.");
+					return Parsing_Status::Error;
+				}
+				if(logo::is_token_type_assignment(second_token.token->type)) {
+					first_token = logo::get_next_token();
+					second_token = logo::get_next_token();
+
+					Ast_Assignment assignment_ast{};
+					assignment_ast.type = logo::token_type_to_ast_assignment_type(second_token.token->type);
+					{
+						auto function_name_length = first_token.token->string.byte_length();
+						char* function_name_ptr = state->memory.construct_string(function_name_length);
+						if(!function_name_ptr) {
+							Report_Error("Couldn't allocate % bytes of memory.",function_name_length + 1);
+							return {};
+						}
+						std::memcpy(function_name_ptr,first_token.token->string.begin_ptr,function_name_length);
+						assignment_ast.name = String_View(function_name_ptr,function_name_length);
+					}
+
+					auto [expr_ast,success] = logo::parse_expression(state);
+					if(!success) return Parsing_Status::Error;
+					assignment_ast.value_expr = expr_ast;
+
+					//@TODO: Return this to the caller instead of discarding it after printing it.
+					logo::print_ast_assignment(assignment_ast);
+
+					if(logo::require_next_token(Token_Type::Semicolon,"Expected a semicolon at the end of a statement.").status == Lexing_Status::Error) return Parsing_Status::Error;
+					break;
+				}
+				[[fallthrough]];
+			}
 			case Token_Type::String_Literal:
 			case Token_Type::Int_Literal:
 			case Token_Type::Float_Literal:
@@ -476,8 +627,10 @@ namespace logo {
 			case Token_Type::Logical_Not: {
 				auto [expr_ast,success] = logo::parse_expression(state);
 				if(!success) return Parsing_Status::Error;
+
 				//@TODO: Return this to the caller instead of discarding it after printing it.
 				logo::print_ast_expression(expr_ast);
+
 				if(logo::require_next_token(Token_Type::Semicolon,"Expected a semicolon at the end of a statement.").status == Lexing_Status::Error) return Parsing_Status::Error;
 				break;
 			}
