@@ -102,6 +102,21 @@ namespace logo {
 		Ast_Expression value_expr;
 	};
 
+	struct Ast_Declaration {
+		String_View name;
+		Ast_Expression initial_value_expr;
+	};
+
+	struct Ast_If_Statement {
+		Ast_Expression condition_expr;
+		//@TODO: If statements to execute if the conditional is taken.
+	};
+
+	struct Ast_While_Statement {
+		Ast_Expression condition_expr;
+		//@TODO: Store the body of the loop.
+	};
+
 	struct Parsing_Result {
 		Arena_Allocator memory;
 		void destroy();

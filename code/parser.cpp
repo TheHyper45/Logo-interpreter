@@ -312,7 +312,7 @@ namespace logo {
 				else logo::report_parser_error("Incomplete expression (error message not complete yet).");
 				return {};
 			}
-			if(first_token.token->type == Token_Type::Semicolon || first_token.token->type == Token_Type::Comma || first_token.token->type == Token_Type::Right_Paren) {
+			if(first_token.token->type == Token_Type::Semicolon || first_token.token->type == Token_Type::Comma || first_token.token->type == Token_Type::Right_Paren || first_token.token->type == Token_Type::Left_Brace) {
 				if(expr_state.complete) {
 					if(!inside_parenthesis && first_token.token->type == Token_Type::Right_Paren) {
 						logo::report_parser_error("Closed parenthesis that was never opened.");
@@ -325,6 +325,7 @@ namespace logo {
 					case Token_Type::Semicolon: character = U';'; break;
 					case Token_Type::Comma: character = U','; break;
 					case Token_Type::Right_Paren: character = U')'; break;
+					case Token_Type::Left_Brace: character = U'{'; break;
 					default: logo::unreachable();
 				}
 				logo::report_parser_error("Unexpected token '%'.",character);
@@ -569,18 +570,137 @@ namespace logo {
 			case Ast_Assignment_Type::Compound_Exponentiate: logo::print("^=\n"); break;
 			default: logo::unreachable();
 		}
-		for(std::size_t i = 0;i < 4;i += 1) logo::print(" ");
-		logo::print_ast_expression(assigment.value_expr);
+		logo::print_ast_expression(assigment.value_expr,1);
 	}
 
-	[[nodiscard]] static Parsing_Status parse_statement(Parsing_Result* state) {
+	static void print_ast_declaration(const Ast_Declaration& declaration) {
+		logo::print("Declaration % =\n",declaration.name);
+		logo::print_ast_expression(declaration.initial_value_expr,1);
+	}
+
+	static void print_ast_if_statement(const Ast_If_Statement& if_statement) {
+		logo::print("If statement:\n");
+		logo::print_ast_expression(if_statement.condition_expr,1);
+	}
+
+	static void print_ast_while_statement(const Ast_While_Statement& while_statement) {
+		logo::print("While statement:\n");
+		logo::print_ast_expression(while_statement.condition_expr,1);
+	}
+
+	[[nodiscard]] static Parsing_Status parse_statement(Parsing_Result* state,bool inside_compound_statement = false) {
 		auto first_token = logo::peek_next_token(1);
 		if(first_token.status == Lexing_Status::Out_Of_Tokens) return Parsing_Status::Complete;
+		if(first_token.token->type == Token_Type::Right_Brace) {
+			if(inside_compound_statement) return Parsing_Status::Complete;
+			logo::report_parser_error("Unexpected token '}'.");
+			return Parsing_Status::Error;
+		}
 
 		switch(first_token.token->type) {
-			case Token_Type::Semicolon: {
-				logo::discard_next_token();
+			case Token_Type::Semicolon: break;
+			case Token_Type::Keyword_Let: {
+				first_token = logo::get_next_token();
+
+				Ast_Declaration declaration_ast{};
+				auto identifier_token = logo::require_next_token(Token_Type::Identifier,"After 'let' keyword an identifier is expected.");
+				if(identifier_token.status == Lexing_Status::Error) return Parsing_Status::Error;
+				{
+					auto function_name_length = identifier_token.token->string.byte_length();
+					char* function_name_ptr = state->memory.construct_string(function_name_length);
+					if(!function_name_ptr) {
+						Report_Error("Couldn't allocate % bytes of memory.",function_name_length + 1);
+						return Parsing_Status::Error;
+					}
+					std::memcpy(function_name_ptr,identifier_token.token->string.begin_ptr,function_name_length);
+					declaration_ast.name = String_View(function_name_ptr,function_name_length);
+				}
+
+				if(logo::require_next_token(Token_Type::Equals_Sign,"Declaration of '%' without initial value is not allowed.",identifier_token.token->string).status == Lexing_Status::Error) {
+					return Parsing_Status::Error;
+				}
+
+				auto [init_ast,success] = logo::parse_expression(state);
+				if(!success) return Parsing_Status::Error;
+				declaration_ast.initial_value_expr = init_ast;
+
+				//@TODO: Return this to the caller instead of discarding it after printing it.
+				logo::print_ast_declaration(declaration_ast);
 				break;
+			}
+			case Token_Type::Keyword_If: {
+				first_token = logo::get_next_token();
+
+				Ast_If_Statement if_statement_ast{};
+				auto [init_ast,success] = logo::parse_expression(state);
+				if(!success) return Parsing_Status::Error;
+				if_statement_ast.condition_expr = init_ast;
+
+				if(logo::require_next_token(Token_Type::Left_Brace,"After a condition, a '{' is required.").status == Lexing_Status::Error) {
+					return Parsing_Status::Error;
+				}
+
+				//@TODO: Statements inside if's body should be stored inside 'Ast_If_Statement'.
+				while(true) {
+					auto status = logo::parse_statement(state,true);
+					if(status == Parsing_Status::Complete) break;
+					if(status == Parsing_Status::Error) return Parsing_Status::Error;
+				}
+
+				if(logo::require_next_token(Token_Type::Right_Brace,"Right brace (in progress).").status == Lexing_Status::Error) {
+					return Parsing_Status::Error;
+				}
+
+				auto else_keyword_token = logo::peek_next_token(1);
+				if(else_keyword_token.status == Lexing_Status::Success) {
+					if(else_keyword_token.token->type == Token_Type::Keyword_Else) {
+						else_keyword_token = logo::get_next_token();
+
+						if(logo::require_next_token(Token_Type::Left_Brace,"After 'else', a '{' is required.").status == Lexing_Status::Error) {
+							return Parsing_Status::Error;
+						}
+
+						//@TODO: Statements inside else's body should be stored inside 'Ast_If_Statement'.
+						while(true) {
+							auto status = logo::parse_statement(state,true);
+							if(status == Parsing_Status::Complete) break;
+							if(status == Parsing_Status::Error) return Parsing_Status::Error;
+						}
+
+						if(logo::require_next_token(Token_Type::Right_Brace,"Right brace (else) (in progress).").status == Lexing_Status::Error) {
+							return Parsing_Status::Error;
+						}
+					}
+				}
+
+				logo::print_ast_if_statement(if_statement_ast);
+				return Parsing_Status::Continue;
+			}
+			case Token_Type::Keyword_While: {
+				first_token = logo::get_next_token();
+
+				Ast_While_Statement while_statement_ast{};
+				auto [init_ast,success] = logo::parse_expression(state);
+				if(!success) return Parsing_Status::Error;
+				while_statement_ast.condition_expr = init_ast;
+
+				if(logo::require_next_token(Token_Type::Left_Brace,"After a condition, a '{' is required.").status == Lexing_Status::Error) {
+					return Parsing_Status::Error;
+				}
+
+				//@TODO: Statements inside if's body should be stored inside 'Ast_While_Statement'.
+				while(true) {
+					auto status = logo::parse_statement(state,true);
+					if(status == Parsing_Status::Complete) break;
+					if(status == Parsing_Status::Error) return Parsing_Status::Error;
+				}
+
+				if(logo::require_next_token(Token_Type::Right_Brace,"Right brace (in progress).").status == Lexing_Status::Error) {
+					return Parsing_Status::Error;
+				}
+
+				logo::print_ast_while_statement(while_statement_ast);
+				return Parsing_Status::Continue;
 			}
 			case Token_Type::Identifier: {
 				auto second_token = logo::peek_next_token(2);
@@ -599,7 +719,7 @@ namespace logo {
 						char* function_name_ptr = state->memory.construct_string(function_name_length);
 						if(!function_name_ptr) {
 							Report_Error("Couldn't allocate % bytes of memory.",function_name_length + 1);
-							return {};
+							return Parsing_Status::Error;
 						}
 						std::memcpy(function_name_ptr,first_token.token->string.begin_ptr,function_name_length);
 						assignment_ast.name = String_View(function_name_ptr,function_name_length);
@@ -611,8 +731,6 @@ namespace logo {
 
 					//@TODO: Return this to the caller instead of discarding it after printing it.
 					logo::print_ast_assignment(assignment_ast);
-
-					if(logo::require_next_token(Token_Type::Semicolon,"Expected a semicolon at the end of a statement.").status == Lexing_Status::Error) return Parsing_Status::Error;
 					break;
 				}
 				[[fallthrough]];
@@ -630,8 +748,6 @@ namespace logo {
 
 				//@TODO: Return this to the caller instead of discarding it after printing it.
 				logo::print_ast_expression(expr_ast);
-
-				if(logo::require_next_token(Token_Type::Semicolon,"Expected a semicolon at the end of a statement.").status == Lexing_Status::Error) return Parsing_Status::Error;
 				break;
 			}
 			default: {
@@ -639,6 +755,7 @@ namespace logo {
 				return Parsing_Status::Error;
 			}
 		}
+		if(logo::require_next_token(Token_Type::Semicolon,"Expected a semicolon at the end of a statement.").status == Lexing_Status::Error) return Parsing_Status::Error;
 		return Parsing_Status::Continue;
 	}
 

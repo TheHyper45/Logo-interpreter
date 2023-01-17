@@ -142,6 +142,9 @@ namespace logo {
 		else if(std::strcmp(token.string.begin_ptr,"if") == 0) {
 			token.type = Token_Type::Keyword_If;
 		}
+		else if(std::strcmp(token.string.begin_ptr,"else") == 0) {
+			token.type = Token_Type::Keyword_Else;
+		}
 		else if(std::strcmp(token.string.begin_ptr,"for") == 0) {
 			token.type = Token_Type::Keyword_For;
 		}

@@ -47,6 +47,7 @@ namespace logo {
 		Compound_Remainder,
 		Compound_Exponentiate,
 		Keyword_If,
+		Keyword_Else,
 		Keyword_While,
 		Keyword_For,
 		Keyword_Let,
