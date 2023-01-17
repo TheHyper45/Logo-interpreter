@@ -10,6 +10,7 @@ namespace logo {
 	struct Ast_Binary_Operator;
 	struct Ast_Unary_Prefix_Operator;
 	struct Ast_Function_Call;
+	struct Ast_Statement;
 
 	enum struct Ast_Value_Type {
 		None,
@@ -83,8 +84,7 @@ namespace logo {
 
 	struct Ast_Function_Call {
 		String_View name;
-		std::size_t arg_count;
-		Ast_Expression* arguments[4];//@TODO: Unrestricted number of parameters would be useful.
+		Heap_Array<Ast_Expression*> arguments;
 	};
 
 	enum struct Ast_Assignment_Type {
@@ -109,16 +109,39 @@ namespace logo {
 
 	struct Ast_If_Statement {
 		Ast_Expression condition_expr;
-		//@TODO: If statements to execute if the conditional is taken.
+		Heap_Array<Ast_Statement> if_true_statements;
+		Heap_Array<Ast_Statement> if_false_statements;
 	};
 
 	struct Ast_While_Statement {
 		Ast_Expression condition_expr;
-		//@TODO: Store the body of the loop.
+		Heap_Array<Ast_Statement> body_statements;
+	};
+
+	enum struct Ast_Statement_Type {
+		Expression,
+		Declaration,
+		Assignment,
+		If_Statement,
+		While_Statement,
+		Break_Stetement,
+		Continue_Statement
+	};
+	struct Ast_Statement {
+		Ast_Statement_Type type;
+		union {
+			Ast_Expression expression;
+			Ast_Declaration declaration;
+			Ast_Assignment assignment;
+			Ast_If_Statement if_statement;
+			Ast_While_Statement while_statement;
+		};
+		Ast_Statement() : type(),expression() {}
 	};
 
 	struct Parsing_Result {
 		Arena_Allocator memory;
+		Heap_Array<Ast_Statement> statements;
 		void destroy();
 	};
 	[[nodiscard]] Option<Parsing_Result> parse_input(Array_View<char> input);
