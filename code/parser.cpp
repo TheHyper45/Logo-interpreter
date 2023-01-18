@@ -491,9 +491,9 @@ namespace logo {
 			case Token_Type::Keyword_Let: {
 				first_token = logo::get_next_token();
 
+				statement_ast.line_index = first_token.token->line_index;
 				statement_ast.type = Ast_Statement_Type::Declaration;
 				statement_ast.declaration = {};
-				statement_ast.declaration.line_index = first_token.token->line_index;
 
 				auto identifier_token = logo::require_next_token(Token_Type::Identifier,"After 'let' keyword an identifier is expected.");
 				if(identifier_token.status == Lexing_Status::Error) return Parsing_Status::Error;
@@ -520,6 +520,7 @@ namespace logo {
 			case Token_Type::Keyword_If: {
 				first_token = logo::get_next_token();
 
+				statement_ast.line_index = first_token.token->line_index;
 				statement_ast.type = Ast_Statement_Type::If_Statement;
 				statement_ast.if_statement = {};
 
@@ -583,6 +584,7 @@ namespace logo {
 			case Token_Type::Keyword_While: {
 				first_token = logo::get_next_token();
 
+				statement_ast.line_index = first_token.token->line_index;
 				statement_ast.type = Ast_Statement_Type::While_Statement;
 				statement_ast.while_statement = {};
 
@@ -608,6 +610,7 @@ namespace logo {
 			}
 			case Token_Type::Keyword_Break: {
 				first_token = logo::get_next_token();
+				statement_ast.line_index = first_token.token->line_index;
 				statement_ast.type = Ast_Statement_Type::Break_Stetement;
 				if(!inside_loop) {
 					logo::report_parser_error("Keyword 'break' can only be used inside a loop.");
@@ -617,6 +620,7 @@ namespace logo {
 			}
 			case Token_Type::Keyword_Continue: {
 				first_token = logo::get_next_token();
+				statement_ast.line_index = first_token.token->line_index;
 				statement_ast.type = Ast_Statement_Type::Continue_Statement;
 				if(!inside_loop) {
 					logo::report_parser_error("Keyword 'continue' can only be used inside a loop.");

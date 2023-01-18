@@ -111,7 +111,6 @@ namespace logo {
 	struct Ast_Declaration {
 		String_View name;
 		Ast_Expression initial_value_expr;
-		std::size_t line_index;
 	};
 
 	struct Ast_If_Statement {
@@ -143,7 +142,8 @@ namespace logo {
 			Ast_If_Statement if_statement;
 			Ast_While_Statement while_statement;
 		};
-		Ast_Statement() : type(),expression() {}
+		std::size_t line_index;
+		Ast_Statement() : type(),expression(),line_index() {}
 	};
 
 	struct Parsing_Result {

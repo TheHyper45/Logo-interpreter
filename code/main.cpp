@@ -273,7 +273,8 @@ int main() {
 
 	/*for(const auto& statement : parsing_result.statements) {
 		logo::print_ast_statement(statement);
-	}*/
+	}
+	logo::print("\n");*/
 
 	if(!logo::interpret_ast({parsing_result.statements.data,parsing_result.statements.length})) {
 		logo::eprint("%\n",logo::get_reported_error());
