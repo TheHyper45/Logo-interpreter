@@ -3,6 +3,7 @@
 #include "debug.hpp"
 #include "parser.hpp"
 #include "heap_array.hpp"
+#include "interpreter.hpp"
 #include "memory_arena.hpp"
 #if defined(_WIN32) || defined(_WIN64) || defined(WIN32)
 	#define PLATFORM_WINDOWS
@@ -96,7 +97,7 @@ namespace logo {
 					logo::print("(Identifier) %\n",expression.value.identfier_name);
 				}
 				else if(expression.value.type == Ast_Value_Type::String_Literal) {
-					logo::print("(String) \"%\"\n",expression.value.string);
+					logo::print("(String) \"%\"\n",expression.value.string_value);
 				}
 				else if(expression.value.type == Ast_Value_Type::Int_Literal) {
 					logo::print("(Int) %\n",expression.value.int_value);
@@ -270,10 +271,13 @@ int main() {
 	}
 	defer[&]{parsing_result.destroy();};
 
-	for(const auto& statement : parsing_result.statements) {
+	/*for(const auto& statement : parsing_result.statements) {
 		logo::print_ast_statement(statement);
-	}
+	}*/
 
-	//@TODO: Interpret the syntax tree.
+	if(!logo::interpret_ast({parsing_result.statements.data,parsing_result.statements.length})) {
+		logo::eprint("%\n",logo::get_reported_error());
+		return 1;
+	}
 	return 0;
 }

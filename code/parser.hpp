@@ -2,6 +2,7 @@
 #define LOGO_PARSER_HPP
 
 #include "utils.hpp"
+#include "string.hpp"
 #include "heap_array.hpp"
 #include "array_view.hpp"
 #include "memory_arena.hpp"
@@ -22,14 +23,15 @@ namespace logo {
 	};
 	struct Ast_Value {
 		Ast_Value_Type type;
+		std::size_t line_index;
 		union {
 			String_View identfier_name;
-			String_View string;
+			String_View string_value;
 			std::int64_t int_value;
 			double float_value;
 			bool bool_value;
 		};
-		Ast_Value() : type(),identfier_name() {}
+		Ast_Value() : type(),line_index(),identfier_name() {}
 	};
 
 	enum struct Ast_Expression_Type {
@@ -70,6 +72,7 @@ namespace logo {
 		Ast_Binary_Operator_Type type;
 		Ast_Expression* left;
 		Ast_Expression* right;
+		std::size_t line_index;
 	};
 
 	enum struct Ast_Unary_Prefix_Operator_Type {
@@ -80,11 +83,13 @@ namespace logo {
 	struct Ast_Unary_Prefix_Operator {
 		Ast_Unary_Prefix_Operator_Type type;
 		Ast_Expression* child;
+		std::size_t line_index;
 	};
 
 	struct Ast_Function_Call {
 		String_View name;
 		Heap_Array<Ast_Expression*> arguments;
+		std::size_t line_index;
 	};
 
 	enum struct Ast_Assignment_Type {
@@ -100,11 +105,13 @@ namespace logo {
 		Ast_Assignment_Type type;
 		String_View name;
 		Ast_Expression value_expr;
+		std::size_t line_index;
 	};
 
 	struct Ast_Declaration {
 		String_View name;
 		Ast_Expression initial_value_expr;
+		std::size_t line_index;
 	};
 
 	struct Ast_If_Statement {

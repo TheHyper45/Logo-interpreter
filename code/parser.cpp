@@ -112,6 +112,7 @@ namespace logo {
 
 	[[nodiscard]] Option<Ast_Value> create_ast_value(Parsing_Result* state,const Token& token) {
 		Ast_Value value{};
+		value.line_index = token.line_index;
 		if(token.type == Token_Type::Int_Literal) {
 			value.type = Ast_Value_Type::Int_Literal;
 			value.int_value = token.int_value;
@@ -134,7 +135,7 @@ namespace logo {
 
 			if(token.type == Token_Type::String_Literal) {
 				value.type = Ast_Value_Type::String_Literal;
-				value.string = String_View(string_ptr,token.string.byte_length());
+				value.string_value = String_View(string_ptr,token.string.byte_length());
 			}
 			else if(token.type == Token_Type::Identifier) {
 				value.type = Ast_Value_Type::Identifier;
@@ -202,11 +203,13 @@ namespace logo {
 				return false;
 			}
 			root->unary_prefix_operator->type = logo::token_type_to_ast_unary_prefix_operator_type(token.type);
+			root->unary_prefix_operator->line_index = token.line_index;
 			return true;
 		}
 		if(logo::is_token_type_literal(expr_state->last_token_type) || expr_state->last_token_type == Token_Type::Identifier || expr_state->last_token_type == Token_Type::Right_Paren) {
 			Ast_Binary_Operator binary_operator{};
 			binary_operator.type = logo::token_type_to_ast_binary_operator_type(token.type);
+			binary_operator.line_index = token.line_index;
 			binary_operator.left = state->memory.construct<Ast_Expression>();
 			if(!binary_operator.left) {
 				Report_Error("Couldn't allocate % bytes of memory.",sizeof(Ast_Expression));
@@ -246,6 +249,7 @@ namespace logo {
 			}
 
 			Ast_Unary_Prefix_Operator unary_prefix_operator{};
+			unary_prefix_operator.line_index = token.line_index;
 			unary_prefix_operator.type = logo::token_type_to_ast_unary_prefix_operator_type(token.type);
 			while(true) {
 				if(!root->binary_operator->right) {
@@ -305,7 +309,7 @@ namespace logo {
 				case Ast_Value_Type::Int_Literal: logo::report_parser_error("Missing a binary operator between '%' and '('.",root->value.int_value); return false;
 				case Ast_Value_Type::Float_Literal: logo::report_parser_error("Missing a binary operator between '%' and '('.",root->value.float_value); return false;
 				case Ast_Value_Type::Bool_Literal: logo::report_parser_error("Missing a binary operator between '%' and '('.",root->value.bool_value); return false;
-				case Ast_Value_Type::String_Literal: logo::report_parser_error("Missing a binary operator between '%' and '('.",root->value.string); return false;
+				case Ast_Value_Type::String_Literal: logo::report_parser_error("Missing a binary operator between '%' and '('.",root->value.string_value); return false;
 				case Ast_Value_Type::Identifier: logo::report_parser_error("Missing a binary operator between '%' and '('.",root->value.identfier_name); return false;
 				default: logo::unreachable();
 			}
@@ -372,6 +376,7 @@ namespace logo {
 
 					if(second_token.token->type == Token_Type::Left_Paren) {
 						second_token = logo::get_next_token();
+						new_expr.function_call->line_index = first_token.token->line_index;
 						{
 							auto third_token = logo::peek_next_token(1);
 							if(third_token.status == Lexing_Status::Out_Of_Tokens) {
@@ -488,6 +493,7 @@ namespace logo {
 
 				statement_ast.type = Ast_Statement_Type::Declaration;
 				statement_ast.declaration = {};
+				statement_ast.declaration.line_index = first_token.token->line_index;
 
 				auto identifier_token = logo::require_next_token(Token_Type::Identifier,"After 'let' keyword an identifier is expected.");
 				if(identifier_token.status == Lexing_Status::Error) return Parsing_Status::Error;
@@ -630,6 +636,7 @@ namespace logo {
 
 					statement_ast.type = Ast_Statement_Type::Assignment;
 					statement_ast.assignment = {};
+					statement_ast.assignment.line_index = first_token.token->line_index;
 
 					statement_ast.assignment.type = logo::token_type_to_ast_assignment_type(second_token.token->type);
 					{

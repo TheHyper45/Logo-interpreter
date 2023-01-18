@@ -23,7 +23,9 @@ add_executable(logo
                code/parser.hpp
                code/parser.cpp
                code/memory_arena.hpp
-               code/memory_arena.cpp)
+               code/memory_arena.cpp
+               code/interpreter.hpp
+               code/interpreter.cpp)
 
 set_target_properties(logo PROPERTIES LINKER_LANGUAGE CXX)
 target_compile_definitions(logo PRIVATE "$<$<CONFIG:DEBUG>:DEBUG_BUILD>")
