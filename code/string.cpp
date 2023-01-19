@@ -147,6 +147,12 @@ namespace logo {
 		arg.value.double_v = value;
 		return arg;
 	}
+	String_Format_Arg make_string_format_arg(std::int32_t value) {
+		String_Format_Arg arg{};
+		arg.type = String_Format_Arg::Type::Int32;
+		arg.value.int32_v = value;
+		return arg;
+	}
 	String_Format_Arg make_string_format_arg(std::int64_t value) {
 		String_Format_Arg arg{};
 		arg.type = String_Format_Arg::Type::Int64;
@@ -219,6 +225,16 @@ namespace logo {
 					case String_Format_Arg::Type::Double: {
 						char buffer[128]{};
 						int result = std::snprintf(buffer,sizeof(buffer) - 1,"%f",arg.value.double_v);
+						if(result < 0) return count;
+						for(auto i : Range(result)) {
+							if(!callback(static_cast<char32_t>(buffer[i]),callback_arg)) return count;
+							count += 1;
+						}
+						break;
+					}
+					case String_Format_Arg::Type::Int32: {
+						char buffer[32]{};
+						int result = std::snprintf(buffer,sizeof(buffer) - 1,"%" PRId32,arg.value.int32_v);
 						if(result < 0) return count;
 						for(auto i : Range(result)) {
 							if(!callback(static_cast<char32_t>(buffer[i]),callback_arg)) return count;

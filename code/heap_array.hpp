@@ -34,9 +34,9 @@ namespace logo {
 			capacity = new_capacity;
 			return true;
 		}
-		bool resize(std::size_t new_capacity) {
+		bool resize(std::size_t new_capacity,const T& default_value = T()) {
 			if(!reserve(new_capacity)) return false;
-			for(auto i : Range(length,capacity)) data[i] = {};
+			for(auto i : Range(length,capacity)) data[i] = default_value;
 			length = capacity;
 			return true;
 		}

@@ -3,16 +3,24 @@
 #include <chrono>
 #include "debug.hpp"
 #include "parser.hpp"
+#include "canvas.hpp"
 #include "interpreter.hpp"
 #include "static_array.hpp"
 
 namespace logo {
+	struct Interpreter_Variable;
 	enum struct Interpreter_Value_Type {
 		Void,
 		Int,
 		Float,
 		Bool,
-		String
+		String,
+		Canvas,
+		Reference
+	};
+	struct Interpreter_Value_Reference {
+		std::size_t var_index;
+		std::size_t generation;
 	};
 	struct Interpreter_Value {
 		Interpreter_Value_Type type;
@@ -21,17 +29,21 @@ namespace logo {
 			double float_v;
 			bool bool_v;
 			String_View string_v;
+			Canvas canvas_v;
+			Interpreter_Value_Reference reference_v;
 		};
 		Interpreter_Value() : type(),int_v() {}
 	};
 	struct Interpreter_Variable {
 		String_View name;
 		Interpreter_Value value;
+		std::size_t generation;
 	};
 	struct Interpreter_Context {
 		std::mt19937_64 random_engine;
 		std::uniform_real_distribution<double> random_dist_0_1;
 		Heap_Array<Interpreter_Variable> variables;
+		std::size_t generation_counter;
 	};
 
 	template<typename... Args>
@@ -68,7 +80,13 @@ namespace logo {
 				result.type = Interpreter_Value_Type::Void;
 				for(const auto& var : context->variables) {
 					if(std::strcmp(var.name.begin_ptr,value.identfier_name.begin_ptr) == 0) {
-						result = var.value;
+						if(var.value.type == Interpreter_Value_Type::Canvas) {
+							auto [copy,success] = var.value.canvas_v.clone();
+							if(!success) return {};
+							result.type = Interpreter_Value_Type::Canvas;
+							result.canvas_v = copy;
+						}
+						else result = var.value;
 						break;
 					}
 				}
@@ -132,6 +150,66 @@ namespace logo {
 				return logo::make_interpreter_value_from_ast_value(context,expression.value);
 			}
 			case Ast_Expression_Type::Unary_Prefix_Operator: {
+				if(expression.unary_prefix_operator->type == Ast_Unary_Prefix_Operator_Type::Reference || expression.unary_prefix_operator->type == Ast_Unary_Prefix_Operator_Type::Dereference) {
+					if(expression.unary_prefix_operator->child->type != Ast_Expression_Type::Value) {
+						if(expression.unary_prefix_operator->type == Ast_Unary_Prefix_Operator_Type::Reference) {
+							logo::report_interpreter_error(expression.unary_prefix_operator->line_index,"Cannot take a reference of an expression.");
+						}
+						else logo::report_interpreter_error(expression.unary_prefix_operator->line_index,"Cannot dereference an expression.");
+						return {};
+					}
+
+					const auto& identfier_value = expression.unary_prefix_operator->child->value;
+					if(identfier_value.type != Ast_Value_Type::Identifier) {
+						if(expression.unary_prefix_operator->type == Ast_Unary_Prefix_Operator_Type::Reference) {
+							logo::report_interpreter_error(expression.unary_prefix_operator->line_index,"Cannot take a reference of an expression.");
+						}
+						else logo::report_interpreter_error(expression.unary_prefix_operator->line_index,"Cannot dereference an expression.");
+						return {};
+					}
+
+					for(std::size_t i = 0;i < context->variables.length;i += 1) {
+						const auto& var = context->variables[i];
+						if(std::strcmp(var.name.begin_ptr,identfier_value.identfier_name.begin_ptr) == 0) {
+							if(expression.unary_prefix_operator->type == Ast_Unary_Prefix_Operator_Type::Reference) {
+								Interpreter_Value value{};
+								value.type = Interpreter_Value_Type::Reference;
+								value.reference_v = {};
+								value.reference_v.var_index = i;
+								value.reference_v.generation = var.generation;
+								return value;
+							}
+
+							if(var.value.type != Interpreter_Value_Type::Reference) {
+								logo::report_interpreter_error(expression.unary_prefix_operator->line_index,"Cannot dereference '%' which is a non-reference.",identfier_value.identfier_name);
+								return {};
+							}
+							const auto& ref_info = var.value.reference_v;
+							if(ref_info.var_index >= context->variables.length) {
+								logo::report_interpreter_error(expression.unary_prefix_operator->line_index,"Dangling reference '%'.",identfier_value.identfier_name);
+								return {};
+							}
+							const Interpreter_Variable& referenced_var = context->variables[ref_info.var_index];
+							if(ref_info.generation != referenced_var.generation) {
+								logo::report_interpreter_error(expression.unary_prefix_operator->line_index,"Dangling reference '%'.",identfier_value.identfier_name);
+								return {};
+							}
+
+							if(referenced_var.value.type == Interpreter_Value_Type::Canvas) {
+								auto [result,success] = referenced_var.value.canvas_v.clone();
+								if(!success) return {};
+								Interpreter_Value value{};
+								value.type = Interpreter_Value_Type::Canvas;
+								value.canvas_v = result;
+								return value;
+							}
+							else return referenced_var.value;
+						}
+					}
+					logo::report_interpreter_error(expression.unary_prefix_operator->line_index,"Identifier '%' does not exist.",identfier_value.identfier_name);
+					return {};
+				}
+
 				auto [value,success] = logo::compute_expression(context,*expression.unary_prefix_operator->child);
 				if(!success) return {};
 				switch(expression.unary_prefix_operator->type) {
@@ -262,6 +340,11 @@ namespace logo {
 			}
 			case Ast_Expression_Type::Function_Call: {
 				Static_Array<Interpreter_Value,16> arg_values{};
+				defer[&]{
+					for(auto& arg : arg_values) {
+						if(arg.type == Interpreter_Value_Type::Canvas) arg.canvas_v.destroy();
+					}
+				};
 
 				for(const auto& arg_expr : expression.function_call->arguments) {
 					auto [arg_value,success] = logo::compute_expression(context,*arg_expr);
@@ -307,6 +390,8 @@ namespace logo {
 						case Interpreter_Value_Type::Bool:		result.string_v = String_View("Bool");		break;
 						case Interpreter_Value_Type::String:	result.string_v = String_View("String");	break;
 						case Interpreter_Value_Type::Void:		result.string_v = String_View("Void");		break;
+						case Interpreter_Value_Type::Canvas:	result.string_v = String_View("Canvas");	break;
+						case Interpreter_Value_Type::Reference:	result.string_v = String_View("Reference");	break;
 						default: logo::unreachable();
 					}
 				}
@@ -334,8 +419,100 @@ namespace logo {
 					result.type = Interpreter_Value_Type::Int;
 					result.int_v = arg0.string_v.byte_length();
 				}
-				else if(std::strcmp(expression.function_call->name.begin_ptr,"dump") == 0) {
+				else if(std::strcmp(expression.function_call->name.begin_ptr,"logo_init") == 0) {
+					if(expression.function_call->arguments.length != 2) {
+						logo::report_interpreter_error(expression.function_call->line_index,"Function 'logo_init' takes exactly 2 arguments.");
+						return {};
+					}
+
+					const auto& arg0 = arg_values[0];
+					if(arg0.type != Interpreter_Value_Type::Int) {
+						logo::report_interpreter_error(expression.function_call->line_index,"Function 'logo_init' requires an integer as a first argument.");
+						return {};
+					}
+
+					const auto& arg1 = arg_values[1];
+					if(arg1.type != Interpreter_Value_Type::Int) {
+						logo::report_interpreter_error(expression.function_call->line_index,"Function 'logo_init' requires an integer as a second argument.");
+						return {};
+					}
+
+					result.type = Interpreter_Value_Type::Canvas;
+					result.canvas_v = {};
+					if(!result.canvas_v.init(arg0.int_v,arg1.int_v)) {
+						return {};
+					}
+				}
+				else if(std::strcmp(expression.function_call->name.begin_ptr,"logo_move_forward") == 0) {
+					if(expression.function_call->arguments.length != 2) {
+						logo::report_interpreter_error(expression.function_call->line_index,"Function 'logo_move_forward' takes exactly 2 arguments.");
+						return {};
+					}
+
+					auto& arg0 = arg_values[0];
+					if(arg0.type != Interpreter_Value_Type::Canvas) {
+						logo::report_interpreter_error(expression.function_call->line_index,"Function 'logo_move_forward' requires a canvas as a first argument.");
+						return {};
+					}
+
+					const auto& arg1 = arg_values[1];
+					if(arg1.type != Interpreter_Value_Type::Int && arg1.type != Interpreter_Value_Type::Float) {
+						logo::report_interpreter_error(expression.function_call->line_index,"Function 'logo_save' requires an integer/float as a second argument.");
+						return {};
+					}
+
+					if(arg1.type == Interpreter_Value_Type::Int) {
+						arg0.canvas_v.move_forward(static_cast<double>(arg1.int_v));
+					}
+					else arg0.canvas_v.move_forward(arg1.float_v);
 					result.type = Interpreter_Value_Type::Void;
+				}
+				else if(std::strcmp(expression.function_call->name.begin_ptr,"logo_rotate_right") == 0) {
+					if(expression.function_call->arguments.length != 2) {
+						logo::report_interpreter_error(expression.function_call->line_index,"Function 'logo_rotate_right' takes exactly 2 arguments.");
+						return {};
+					}
+
+					auto& arg0 = arg_values[0];
+					if(arg0.type != Interpreter_Value_Type::Canvas) {
+						logo::report_interpreter_error(expression.function_call->line_index,"Function 'logo_rotate_right' requires a canvas as a first argument.");
+						return {};
+					}
+
+					const auto& arg1 = arg_values[1];
+					if(arg1.type != Interpreter_Value_Type::Int && arg1.type != Interpreter_Value_Type::Float) {
+						logo::report_interpreter_error(expression.function_call->line_index,"Function 'logo_save' requires an integer/float as a second argument.");
+						return {};
+					}
+
+					if(arg1.type == Interpreter_Value_Type::Int) {
+						arg0.canvas_v.rot += static_cast<double>(arg1.int_v);
+					}
+					else arg0.canvas_v.rot += arg1.float_v;
+					result.type = Interpreter_Value_Type::Void;
+				}
+				else if(std::strcmp(expression.function_call->name.begin_ptr,"logo_save") == 0) {
+					if(expression.function_call->arguments.length != 2) {
+						logo::report_interpreter_error(expression.function_call->line_index,"Function 'logo_save' takes exactly 2 arguments.");
+						return {};
+					}
+
+					auto& arg0 = arg_values[0];
+					if(arg0.type != Interpreter_Value_Type::Canvas) {
+						logo::report_interpreter_error(expression.function_call->line_index,"Function 'logo_save' requires a canvas as a first argument.");
+						return {};
+					}
+
+					const auto& arg1 = arg_values[1];
+					if(arg1.type != Interpreter_Value_Type::String) {
+						logo::report_interpreter_error(expression.function_call->line_index,"Function 'logo_save' requires a string as a second argument.");
+						return {};
+					}
+
+					if(!arg0.canvas_v.save_as_bitmap(arg1.string_v)) return {};
+					result.type = Interpreter_Value_Type::Void;
+				}
+				else if(std::strcmp(expression.function_call->name.begin_ptr,"dump") == 0) {
 					if(expression.function_call->arguments.length != 1) {
 						logo::report_interpreter_error(expression.function_call->line_index,"Function 'dump' takes exactly 1 argument.");
 						return {};
@@ -349,7 +526,12 @@ namespace logo {
 						case Interpreter_Value_Type::Bool:		logo::print("%\n",arg0.bool_v);			break;
 						case Interpreter_Value_Type::String:	logo::print("\"%\"\n",arg0.string_v);	break;
 						case Interpreter_Value_Type::Void:		logo::print("(Void)\n");				break;
+						case Interpreter_Value_Type::Canvas:
+							logo::print("(Canvas){width = %,height = %,pos_x = %,pos_y = %,rot = %}\n",
+										arg0.canvas_v.width,arg0.canvas_v.height,arg0.canvas_v.pos_x,arg0.canvas_v.pos_y,arg0.canvas_v.rot); break;
+						case Interpreter_Value_Type::Reference: logo::print("(Reference)\n"); break; //@TODO: Print what that reference points to.
 					}
+					result.type = Interpreter_Value_Type::Void;
 				}
 				else {
 					logo::report_interpreter_error(expression.function_call->line_index,"Function '%' has not been defined.",expression.function_call->name);
@@ -361,12 +543,22 @@ namespace logo {
 		}
 	}
 
+	static void destroy_scope_variables(Interpreter_Context* context,std::size_t start_index = 0) {
+		for(std::size_t i = start_index;i < context->variables.length;i += 1) {
+			auto& var = context->variables[i];
+			if(var.value.type == Interpreter_Value_Type::Canvas) {
+				var.value.canvas_v.destroy();
+			}
+		}
+	}
+
 	[[nodiscard]] static bool interpret_ast(Interpreter_Context* context,Array_View<Ast_Statement> statements) {
 		for(const auto& statement : statements) {
 			switch(statement.type) {
 				case Ast_Statement_Type::Expression: {
 					auto [value,success] = logo::compute_expression(context,statement.expression);
 					if(!success) return false;
+					if(value.type == Interpreter_Value_Type::Canvas) value.canvas_v.destroy();
 					break;
 				}
 				case Ast_Statement_Type::Declaration: {
@@ -379,6 +571,8 @@ namespace logo {
 
 					Interpreter_Variable variable{};
 					variable.name = statement.declaration.name;
+					context->generation_counter += 1;
+					variable.generation = context->generation_counter;
 					auto [value,success] = logo::compute_expression(context,statement.declaration.initial_value_expr);
 					if(!success) return false;
 
@@ -406,8 +600,26 @@ namespace logo {
 								return false;
 							}
 
+							//@TODO: Implement all compound assignment operators for reference accesses.
 							if(statement.assignment.type == Ast_Assignment_Type::Assignment) {
-								var.value = new_value;
+								if(statement.assignment.is_through_reference) {
+									if(var.value.type != Interpreter_Value_Type::Reference) {
+										logo::report_interpreter_error(statement.assignment.line_index,"Cannot dereference '%' which is a non-reference.",statement.assignment.name);
+										return false;
+									}
+									const auto& ref_info = var.value.reference_v;
+									if(ref_info.var_index >= context->variables.length) {
+										logo::report_interpreter_error(statement.assignment.line_index,"Dangling reference '%'.",statement.assignment.name);
+										return {};
+									}
+									Interpreter_Variable& referenced_var = context->variables[ref_info.var_index];
+									if(ref_info.generation != referenced_var.generation) {
+										logo::report_interpreter_error(statement.assignment.line_index,"Dangling reference '%'.",statement.assignment.name);
+										return {};
+									}
+									referenced_var.value = new_value;
+								}
+								else var.value = new_value;
 							}
 							else if(var.value.type == Interpreter_Value_Type::Int && new_value.type == Interpreter_Value_Type::Int) {
 								var.value.type = Interpreter_Value_Type::Int;
@@ -460,6 +672,7 @@ namespace logo {
 							return false;
 						}
 					}
+					logo::destroy_scope_variables(context,var_count);
 					context->variables.length = var_count;
 					break;
 				}
@@ -477,13 +690,14 @@ namespace logo {
 						if(!logo::interpret_ast(context,{statement.while_statement.body_statements.data,statement.while_statement.body_statements.length})) {
 							return false;
 						}
+						logo::destroy_scope_variables(context,var_count);
 						context->variables.length = var_count;
 						condition_expr_option = logo::compute_expression(context,statement.while_statement.condition_expr);
 						if(!condition_expr_option.has_value) return false;
 					}
 					break;
 				}
-				case Ast_Statement_Type::Break_Stetement: {
+				case Ast_Statement_Type::Break_Statement: {
 					logo::report_interpreter_error(statement.line_index,"'break' has not yet been implemented.");
 					return false;
 				}
@@ -501,7 +715,10 @@ namespace logo {
 		Interpreter_Context context{};
 		context.random_engine = std::mt19937_64(std::chrono::steady_clock::now().time_since_epoch().count());
 		context.random_dist_0_1 = std::uniform_real_distribution(0.0,1.0);
-		defer[&]{context.variables.destroy();};
+		defer[&]{
+			logo::destroy_scope_variables(&context);
+			context.variables.destroy();
+		};
 		return logo::interpret_ast(&context,statements);
 	}
 }

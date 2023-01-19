@@ -121,6 +121,12 @@ namespace logo {
 				else if(expression.unary_prefix_operator->type == Ast_Unary_Prefix_Operator_Type::Logical_Not) {
 					logo::print("not\n");
 				}
+				else if(expression.unary_prefix_operator->type == Ast_Unary_Prefix_Operator_Type::Reference) {
+					logo::print("&\n");
+				}
+				else if(expression.unary_prefix_operator->type == Ast_Unary_Prefix_Operator_Type::Dereference) {
+					logo::print("^\n");
+				}
 				logo::print_ast_expression(*expression.unary_prefix_operator->child,depth + 1);
 				break;
 			}
@@ -187,7 +193,7 @@ namespace logo {
 	static void print_ast_statement(const Ast_Statement& statement,std::size_t depth = 0) {
 		logo::print_n_spaces(depth);
 		switch(statement.type) {
-			case Ast_Statement_Type::Break_Stetement: logo::print("Break statement\n"); break;
+			case Ast_Statement_Type::Break_Statement: logo::print("Break statement\n"); break;
 			case Ast_Statement_Type::Continue_Statement: logo::print("Continue statement\n"); break;
 			case Ast_Statement_Type::Declaration: {
 				logo::print("Declaration % =\n",statement.declaration.name);
@@ -195,7 +201,10 @@ namespace logo {
 				break;
 			}
 			case Ast_Statement_Type::Assignment: {
-				logo::print("Assignment % ",statement.assignment.name);
+				if(statement.assignment.is_through_reference) {
+					logo::print("Assignment ^% ",statement.assignment.name);
+				}
+				else logo::print("Assignment % ",statement.assignment.name);
 				switch(statement.assignment.type) {
 					case Ast_Assignment_Type::Assignment: logo::print("=\n"); break;
 					case Ast_Assignment_Type::Compound_Plus: logo::print("+=\n"); break;
@@ -274,7 +283,8 @@ int main() {
 	/*for(const auto& statement : parsing_result.statements) {
 		logo::print_ast_statement(statement);
 	}
-	logo::print("\n");*/
+	logo::print("\n");
+	return 0;*/
 
 	if(!logo::interpret_ast({parsing_result.statements.data,parsing_result.statements.length})) {
 		logo::eprint("%\n",logo::get_reported_error());

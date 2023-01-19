@@ -78,6 +78,7 @@ namespace logo {
 			Char,
 			Char32_T,
 			Double,
+			Int32,
 			Int64,
 			Bool
 		};
@@ -88,6 +89,7 @@ namespace logo {
 			char char_v;
 			char32_t char32_t_v;
 			double double_v;
+			std::int32_t int32_v;
 			std::int64_t int64_v;
 			bool bool_v;
 		};
@@ -101,6 +103,7 @@ namespace logo {
 	[[nodiscard]] String_Format_Arg make_string_format_arg(char value);
 	[[nodiscard]] String_Format_Arg make_string_format_arg(char32_t value);
 	[[nodiscard]] String_Format_Arg make_string_format_arg(double value);
+	[[nodiscard]] String_Format_Arg make_string_format_arg(std::int32_t value);
 	[[nodiscard]] String_Format_Arg make_string_format_arg(std::int64_t value);
 	[[nodiscard]] String_Format_Arg make_string_format_arg(bool value);
 	[[nodiscard]] String_Format_Arg make_string_format_arg(const char* value);

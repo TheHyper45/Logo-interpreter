@@ -78,7 +78,9 @@ namespace logo {
 	enum struct Ast_Unary_Prefix_Operator_Type {
 		Plus,
 		Minus,
-		Logical_Not
+		Logical_Not,
+		Reference,
+		Dereference
 	};
 	struct Ast_Unary_Prefix_Operator {
 		Ast_Unary_Prefix_Operator_Type type;
@@ -106,6 +108,7 @@ namespace logo {
 		String_View name;
 		Ast_Expression value_expr;
 		std::size_t line_index;
+		bool is_through_reference;
 	};
 
 	struct Ast_Declaration {
@@ -130,7 +133,7 @@ namespace logo {
 		Assignment,
 		If_Statement,
 		While_Statement,
-		Break_Stetement,
+		Break_Statement,
 		Continue_Statement
 	};
 	struct Ast_Statement {

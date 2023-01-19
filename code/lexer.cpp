@@ -46,6 +46,17 @@ namespace logo {
 			default: return false;
 		}
 	}
+	bool is_token_type_unary_prefix_operator(Token_Type type) {
+		switch(type) {
+			case Token_Type::Plus:
+			case Token_Type::Minus:
+			case Token_Type::Logical_Not:
+			case Token_Type::Ampersand:
+			case Token_Type::Caret:
+				return true;
+			default: return false;
+		}
+	}
 	bool is_token_type_literal(Token_Type type) {
 		switch(type) {
 			case Token_Type::Int_Literal:
@@ -95,13 +106,13 @@ namespace logo {
 	[[nodiscard]] static bool is_code_point_whitespace(char32_t code_point) {
 		return code_point == ' ' || code_point == '\t' || code_point == '\r';
 	}
-	[[nodiscard]] static bool is_code_point_special(char32_t code_point) {
+	/*[[nodiscard]] static bool is_code_point_special(char32_t code_point) {
 		return code_point == '(' || code_point == ')' || code_point == '[' || code_point == ']' ||
 			code_point == '{' || code_point == '}' || code_point == ',' || code_point == '<' ||
 			code_point == '>' || code_point == '+' || code_point == '-' || code_point == '*' ||
 			code_point == '/' || code_point == '^' || code_point == '!' || code_point == ';' ||
 			code_point == '\'' || code_point == ':' || code_point == '%';
-	}
+	}*/
 
 	static bool append_code_point_to_token(char32_t code_point) {
 		auto bytes = logo::make_code_units(code_point);
@@ -273,6 +284,9 @@ namespace logo {
 		}
 		else if(lexer.last_token_code_point == '^') {
 			token.type = Token_Type::Caret;
+		}
+		else if(lexer.last_token_code_point == '&') {
+			token.type = Token_Type::Ampersand;
 		}
 		else if(lexer.last_token_code_point == '=') {
 			token.type = Token_Type::Equals_Sign;

@@ -4,7 +4,7 @@
 #include "heap_array.hpp"
 
 namespace logo {
-	static [[nodiscard]] Ast_Binary_Operator_Type token_type_to_ast_binary_operator_type(Token_Type type) {
+	[[nodiscard]] static Ast_Binary_Operator_Type token_type_to_ast_binary_operator_type(Token_Type type) {
 		switch(type) {
 			case Token_Type::Plus: return Ast_Binary_Operator_Type::Plus;
 			case Token_Type::Minus: return Ast_Binary_Operator_Type::Minus;
@@ -23,15 +23,17 @@ namespace logo {
 			default: logo::unreachable();
 		}
 	}
-	static [[nodiscard]] Ast_Unary_Prefix_Operator_Type token_type_to_ast_unary_prefix_operator_type(Token_Type type) {
+	[[nodiscard]] static Ast_Unary_Prefix_Operator_Type token_type_to_ast_unary_prefix_operator_type(Token_Type type) {
 		switch(type) {
 			case Token_Type::Plus: return Ast_Unary_Prefix_Operator_Type::Plus;
 			case Token_Type::Minus: return Ast_Unary_Prefix_Operator_Type::Minus;
 			case Token_Type::Logical_Not: return Ast_Unary_Prefix_Operator_Type::Logical_Not;
+			case Token_Type::Ampersand: return Ast_Unary_Prefix_Operator_Type::Reference;
+			case Token_Type::Caret: return Ast_Unary_Prefix_Operator_Type::Dereference;
 			default: logo::unreachable();
 		}
 	}
-	static [[nodiscard]] std::size_t get_operator_precedence(Ast_Binary_Operator_Type type) {
+	[[nodiscard]] static std::size_t get_operator_precedence(Ast_Binary_Operator_Type type) {
 		switch(type) {
 			case Ast_Binary_Operator_Type::Logical_And: return 4;
 			case Ast_Binary_Operator_Type::Logical_Or: return 4;
@@ -50,7 +52,7 @@ namespace logo {
 			default: logo::unreachable();
 		}
 	}
-	static [[nodiscard]] Ast_Assignment_Type token_type_to_ast_assignment_type(Token_Type type) {
+	[[nodiscard]] static Ast_Assignment_Type token_type_to_ast_assignment_type(Token_Type type) {
 		switch(type) {
 			case Token_Type::Equals_Sign: return Ast_Assignment_Type::Assignment;
 			case Token_Type::Compound_Plus: return Ast_Assignment_Type::Compound_Plus;
@@ -193,7 +195,7 @@ namespace logo {
 	[[nodiscard]] bool insert_operator_into_ast(Parsing_Result* state,Ast_Expression* root,const Token& token,Expression_State* expr_state) {
 		if(root->type == Ast_Expression_Type::None) {
 			root->type = Ast_Expression_Type::Unary_Prefix_Operator;
-			if(token.type != Token_Type::Plus && token.type != Token_Type::Minus && token.type != Token_Type::Logical_Not) {
+			if(!logo::is_token_type_unary_prefix_operator(token.type)) {
 				logo::report_parser_error("Token '%' is not an unary prefix operator.",token.string);
 				return false;
 			}
@@ -243,7 +245,7 @@ namespace logo {
 			}
 		}
 		if(logo::is_token_type_binary_operator(expr_state->last_token_type)) {
-			if(token.type != Token_Type::Plus && token.type != Token_Type::Minus && token.type != Token_Type::Logical_Not) {
+			if(!logo::is_token_type_unary_prefix_operator(token.type)) {
 				logo::report_parser_error("Token '%' is not an unary prefix operator.",token.string);
 				return false;
 			}
@@ -443,6 +445,7 @@ namespace logo {
 				case Token_Type::Slash:
 				case Token_Type::Percent:
 				case Token_Type::Caret:
+				case Token_Type::Ampersand:
 				case Token_Type::Logical_And:
 				case Token_Type::Logical_Or:
 				case Token_Type::Logical_Not:
@@ -473,6 +476,31 @@ namespace logo {
 			expr_state.last_token_type = first_token.token->type;
 		}
 		logo::unreachable();
+	}
+
+	[[nodiscard]] Option<Ast_Statement> process_assignment_parsing(Parsing_Result* state,std::size_t line_index,bool is_through_reference,Token_Type assignment_token_type,String_View token_string) {
+		Ast_Statement statement_ast{};
+		statement_ast.type = Ast_Statement_Type::Assignment;
+		statement_ast.assignment = {};
+		statement_ast.assignment.line_index = line_index;
+		statement_ast.assignment.is_through_reference = is_through_reference;
+
+		statement_ast.assignment.type = logo::token_type_to_ast_assignment_type(assignment_token_type);
+		{
+			auto function_name_length = token_string.byte_length();
+			char* function_name_ptr = state->memory.construct_string(function_name_length);
+			if(!function_name_ptr) {
+				Report_Error("Couldn't allocate % bytes of memory.",function_name_length + 1);
+				return {};
+			}
+			std::memcpy(function_name_ptr,token_string.begin_ptr,function_name_length);
+			statement_ast.assignment.name = String_View(function_name_ptr,function_name_length);
+		}
+
+		auto [expr_ast,success] = logo::parse_expression(state);
+		if(!success) {};
+		statement_ast.assignment.value_expr = expr_ast;
+		return statement_ast;
 	}
 	
 	[[nodiscard]] static Parsing_Status_Info parse_statement(Parsing_Result* state,bool inside_compound_statement = false,bool inside_loop = false) {
@@ -611,7 +639,7 @@ namespace logo {
 			case Token_Type::Keyword_Break: {
 				first_token = logo::get_next_token();
 				statement_ast.line_index = first_token.token->line_index;
-				statement_ast.type = Ast_Statement_Type::Break_Stetement;
+				statement_ast.type = Ast_Statement_Type::Break_Statement;
 				if(!inside_loop) {
 					logo::report_parser_error("Keyword 'break' can only be used inside a loop.");
 					return Parsing_Status::Error;
@@ -638,28 +666,58 @@ namespace logo {
 					first_token = logo::get_next_token();
 					second_token = logo::get_next_token();
 
-					statement_ast.type = Ast_Statement_Type::Assignment;
-					statement_ast.assignment = {};
-					statement_ast.assignment.line_index = first_token.token->line_index;
-
-					statement_ast.assignment.type = logo::token_type_to_ast_assignment_type(second_token.token->type);
-					{
-						auto function_name_length = first_token.token->string.byte_length();
-						char* function_name_ptr = state->memory.construct_string(function_name_length);
-						if(!function_name_ptr) {
-							Report_Error("Couldn't allocate % bytes of memory.",function_name_length + 1);
-							return Parsing_Status::Error;
-						}
-						std::memcpy(function_name_ptr,first_token.token->string.begin_ptr,function_name_length);
-						statement_ast.assignment.name = String_View(function_name_ptr,function_name_length);
-					}
-
-					auto [expr_ast,success] = logo::parse_expression(state);
+					auto [stmt_ast,success] = logo::process_assignment_parsing(state,first_token.token->line_index,false,second_token.token->type,first_token.token->string);
 					if(!success) return Parsing_Status::Error;
-					statement_ast.assignment.value_expr = expr_ast;
+					statement_ast = stmt_ast;
 					break;
 				}
-				[[fallthrough]];
+
+				statement_ast.type = Ast_Statement_Type::Expression;
+				statement_ast.expression = {};
+				auto [expr_ast,success] = logo::parse_expression(state);
+				if(!success) return Parsing_Status::Error;
+				statement_ast.expression = expr_ast;
+				break;
+			}
+			case Token_Type::Caret: {
+				auto second_token = logo::peek_next_token(2);
+				if(second_token.status == Lexing_Status::Out_Of_Tokens) {
+					logo::report_parser_error("Missing(?) a semicolon at the end of the statement.");
+					return Parsing_Status::Error;
+				}
+
+				if(second_token.token->type == Token_Type::Identifier) {
+					auto third_token = logo::peek_next_token(3);
+					if(third_token.status == Lexing_Status::Out_Of_Tokens) {
+						logo::report_parser_error("Missing(?) a semicolon at the end of the statement.");
+						return Parsing_Status::Error;
+					}
+
+					if(logo::is_token_type_assignment(third_token.token->type)) {
+						first_token = logo::get_next_token();
+						second_token = logo::get_next_token();
+						third_token = logo::get_next_token();
+
+						auto [stmt_ast,success] = logo::process_assignment_parsing(state,first_token.token->line_index,true,third_token.token->type,second_token.token->string);
+						if(!success) return Parsing_Status::Error;
+						statement_ast = stmt_ast;
+					}
+					else {
+						statement_ast.type = Ast_Statement_Type::Expression;
+						statement_ast.expression = {};
+						auto [expr_ast,success] = logo::parse_expression(state);
+						if(!success) return Parsing_Status::Error;
+						statement_ast.expression = expr_ast;
+					}
+				}
+				else {
+					statement_ast.type = Ast_Statement_Type::Expression;
+					statement_ast.expression = {};
+					auto [expr_ast,success] = logo::parse_expression(state);
+					if(!success) return Parsing_Status::Error;
+					statement_ast.expression = expr_ast;
+				}
+				break;
 			}
 			case Token_Type::String_Literal:
 			case Token_Type::Int_Literal:
@@ -668,10 +726,10 @@ namespace logo {
 			case Token_Type::Left_Paren:
 			case Token_Type::Plus:
 			case Token_Type::Minus:
-			case Token_Type::Logical_Not: {
+			case Token_Type::Logical_Not:
+			case Token_Type::Ampersand: {
 				statement_ast.type = Ast_Statement_Type::Expression;
 				statement_ast.expression = {};
-
 				auto [expr_ast,success] = logo::parse_expression(state);
 				if(!success) return Parsing_Status::Error;
 				statement_ast.expression = expr_ast;
