@@ -10,6 +10,8 @@ namespace logo {
 		pos_x = width / 2.0f;
 		pos_y = height / 2.0f;
 		rot = 0.0;
+		is_pen_down = true;
+		pen_color = Color{0,0,0};
 		if(!pixels.resize(static_cast<std::size_t>(width) * height,Color{255,255,255})) {
 			Report_Error("Couldn't allocate % bytes of memory.",width * height * sizeof(pixels[0]));
 			return false;
@@ -19,24 +21,6 @@ namespace logo {
 
 	void Canvas::destroy() {
 		pixels.destroy();
-	}
-
-	Option<Canvas> Canvas::clone() const {
-		Canvas result{};
-		result.width = width;
-		result.height = height;
-		result.pos_x = pos_x;
-		result.pos_y = pos_y;
-		result.rot = rot;
-		
-		std::size_t pixel_count = static_cast<std::size_t>(result.width) * result.height;
-		if(!result.pixels.resize(pixel_count,Color{255,255,255})) {
-			Report_Error("Couldn't allocate % bytes of memory.",pixel_count * sizeof(result.pixels[0]));
-			return {};
-		}
-		static_assert(std::is_trivially_copyable_v<Color>);
-		std::memcpy(result.pixels.data,pixels.data,pixel_count * sizeof(result.pixels[0]));
-		return result;
 	}
 
 	bool Canvas::save_as_bitmap(String_View file_path) {
@@ -99,9 +83,9 @@ namespace logo {
 		if(!file_write(Color_Palette_Ignored)) return false;
 
 		for(std::size_t i = 0;i < pixels.length;i += 1) {
-			if(!file_write(pixels[i].r)) return false;
-			if(!file_write(pixels[i].g)) return false;
 			if(!file_write(pixels[i].b)) return false;
+			if(!file_write(pixels[i].g)) return false;
+			if(!file_write(pixels[i].r)) return false;
 
 			static constexpr std::uint8_t Opaque_Alpha = 255;
 			if(!file_write(Opaque_Alpha)) return false;
@@ -124,7 +108,7 @@ namespace logo {
 
 			for(std::int32_t x = x0;x <= x1;x += 1) {
 				if(x >= 0 && x < width && y >= 0 && y < height) {
-					pixels[y * width + x] = Color{0,0,0};
+					if(is_pen_down) pixels[y * width + x] = pen_color;
 				}
 				if(d > 0) {
 					y += yi;
@@ -146,7 +130,7 @@ namespace logo {
 
 			for(std::int32_t y = y0;y <= y1;y += 1) {
 				if(x >= 0 && x < width && y >= 0 && y < height) {
-					pixels[y * width + x] = Color{0,0,0};
+					if(is_pen_down) pixels[y * width + x] = pen_color;
 				}
 				if(d > 0) {
 					x += xi;
@@ -164,23 +148,14 @@ namespace logo {
 		pos_y = fy1;
 		auto x1 = static_cast<std::int32_t>(fx1);
 		auto y1 = static_cast<std::int32_t>(fy1);
-		logo::print("Rot: %\n",rot);
 
 		if(std::abs(y1 - y0) < std::abs(x1 - x0)) {
-			if(x0 > x1) {
-				plot_line_low(x1,y1,x0,y0);
-			}
-			else {
-				plot_line_low(x0,y0,x1,y1);
-			}
+			if(x0 > x1) plot_line_low(x1,y1,x0,y0);
+			else plot_line_low(x0,y0,x1,y1);
 		}
 		else {
-			if(y0 > y1) {
-				plot_line_high(x1,y1,x0,y0);
-			}
-			else {
-				plot_line_high(x0,y0,x1,y1);
-			}
+			if(y0 > y1) plot_line_high(x1,y1,x0,y0);
+			else plot_line_high(x0,y0,x1,y1);
 		}
 	}
 }

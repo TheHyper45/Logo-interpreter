@@ -38,6 +38,8 @@ if(MSVC)
                                           VS_DEBUGGER_COMMAND "$<TARGET_FILE:logo>"
                                           VS_DEBUGGER_ENVIRONMENT "PATH=%PATH%;${CMAKE_PREFIX_PATH}/bin")
     target_compile_options(logo PRIVATE /utf-8 /W4 /Wall /MP /permissive- /Zc:preprocessor /EHs-c- /D_HAS_EXCEPTIONS=0 /GR- /wd4820 /wd4514 /wd4626 /wd5045 /wd5264 /wd4623 /wd4061)
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /STACK:\"268435456\"")
 else()
     target_compile_options(logo PRIVATE -Wall -Wextra -Wshadow -Wconversion -pedantic -fno-exceptions -fno-rtti)
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,stack-size=268435456")
 endif()

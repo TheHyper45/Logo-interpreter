@@ -54,7 +54,7 @@ namespace logo {
 #endif
 	}
 
-	bool _print_stdout_char32_t(char32_t c) {
+	bool print_stdout_char32_t(char32_t c) {
 		Array_String<sizeof(c)> code_point{};
 		code_point.append(c);
 		String_View code = "\x1B[38;5;15m";
@@ -69,7 +69,7 @@ namespace logo {
 		return true;
 	}
 
-	bool _print_stderr_char32_t(char32_t c) {
+	bool print_stderr_char32_t(char32_t c) {
 		Array_String<sizeof(c)> code_point{};
 		code_point.append(c);
 		String_View code = "\x1B[38;5;9m";

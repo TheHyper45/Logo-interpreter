@@ -82,7 +82,7 @@ namespace logo {
 			Int64,
 			Bool
 		};
-		union Value {
+		union {
 			std::size_t size_t_v;
 			std::uint_least32_t uint_least32_t_v;
 			String_View string_view_v;
@@ -94,7 +94,7 @@ namespace logo {
 			bool bool_v;
 		};
 		Type type;
-		Value value;
+		String_Format_Arg() : type(),size_t_v() {}
 	};
 
 	[[nodiscard]] String_Format_Arg make_string_format_arg(std::size_t value);
@@ -111,21 +111,28 @@ namespace logo {
 	[[nodiscard]] String_Format_Arg make_string_format_arg(const char(&value)[Count]) {
 		String_Format_Arg arg{};
 		arg.type = String_Format_Arg::Type::String_View;
-		arg.value.string_view_v = String_View(value,Count - 1);
+		arg.string_view_v = String_View(value,Count - 1);
 		return arg;
 	}
 	template<std::size_t Count>
 	[[nodiscard]] String_Format_Arg make_string_format_arg(const Array_String<Count>& string) {
 		String_Format_Arg result{};
 		result.type = String_Format_Arg::Type::String_View;
-		result.value.string_view_v = {string.buffer,string.byte_length};
+		result.string_view_v = {string.buffer,string.byte_length};
 		return result;
 	}
 
-	std::size_t _format_into(bool(*callback)(char32_t,const void*),const void* callback_arg,String_View format,Array_View<String_Format_Arg> args);
+	struct String_Format_Result {
+		std::size_t characters_written;
+		std::size_t count_of_arguments_processed;
+		std::size_t count_of_args;
+		bool external_failure;
+	};
+
+	String_Format_Result _format_into(bool(*callback)(char32_t,const void*),const void* callback_arg,String_View format,Array_View<String_Format_Arg> args);
 
 	template<typename Callback,typename... Args>
-	std::size_t format_into(const Callback& callback,Format_String<std::type_identity_t<Args>...> format,Args&&... args) {
+	String_Format_Result format_into(const Callback& callback,Format_String<std::type_identity_t<Args>...> format,Args&&... args) {
 		auto lambda = [](char32_t c,const void* arg) -> bool { return (*reinterpret_cast<const Callback*>(arg))(c); };
 		if constexpr(sizeof...(Args) > 0) {
 			String_Format_Arg format_args[] = {logo::make_string_format_arg(std::forward<Args>(args))...};
@@ -134,8 +141,14 @@ namespace logo {
 		else return logo::_format_into(lambda,reinterpret_cast<const void*>(&callback),{format.buffer,format.length},{});
 	}
 
+	template<typename Callback>
+	String_Format_Result format_args_into(const Callback& callback,String_View format,Array_View<String_Format_Arg> args) {
+		auto lambda = [](char32_t c,const void* arg) -> bool { return (*reinterpret_cast<const Callback*>(arg))(c); };
+		return logo::_format_into(lambda,reinterpret_cast<const void*>(&callback),{format.begin_ptr,format.byte_length()},args);
+	}
+
 	template<std::size_t Count,typename... Args>
-	std::size_t format(Array_String<Count>* output,Format_String<std::type_identity_t<Args>...> format,Args&&... args) {
+	String_Format_Result format(Array_String<Count>* output,Format_String<std::type_identity_t<Args>...> format,Args&&... args) {
 		auto lambda = [&](char32_t c) { return output->append(c); };
 		return logo::format_into(lambda,format,std::forward<Args>(args)...);
 	}

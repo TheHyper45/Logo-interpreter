@@ -6,6 +6,14 @@
 #include <type_traits>
 
 namespace logo {
+	static constexpr double PI = 3.141592653589793;
+	[[nodiscard]] constexpr double radians(double value) {
+		return value * PI / 180.0f;
+	}
+	[[nodiscard]] constexpr double degrees(double value) {
+		return value * 180.0f / PI;
+	}
+
 	template<typename...>
 	struct Tuple;
 
@@ -78,26 +86,11 @@ namespace logo {
 		return Count;
 	}
 
-#define LOGO_DEFINE_ENUM_FLAGS(T)\
-	T operator~(T v) {\
-		using Underlying_Type = std::underlying_type_t<T>;\
-		return static_cast<T>(~static_cast<Underlying_Type>(v));\
-	}\
-	T operator|(T a,T b) {\
-		using Underlying_Type = std::underlying_type_t<T>;\
-		return static_cast<T>(static_cast<Underlying_Type>(a) | static_cast<Underlying_Type>(b));\
-	}\
-	T operator&(T a,T b) {\
-		using Underlying_Type = std::underlying_type_t<T>;\
-		return static_cast<T>(static_cast<Underlying_Type>(a) & static_cast<Underlying_Type>(b));\
-	}\
-	T& operator|=(T& a,T b) {\
-		a = (a | b);\
-		return a;\
-	}\
-	T& operator&=(T& a,T b) {\
-		a = (a & b);\
-		return a;\
+	[[nodiscard]] constexpr double float_min(double a,double b) {
+		return (a < b) ? a : b;
+	}
+	[[nodiscard]] constexpr double float_max(double a,double b) {
+		return (a > b) ? a : b;
 	}
 }
 

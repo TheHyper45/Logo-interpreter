@@ -2,6 +2,8 @@
 #define LOGO_STATIC_ARRAY_HPP
 
 #include <cstddef>
+#include <cstring>
+#include <initializer_list>
 
 namespace logo {
 	template<typename T,std::size_t Capacity>
@@ -9,6 +11,18 @@ namespace logo {
 		T data[Capacity];
 		std::size_t length;
 		Static_Array() : length() {}
+		
+		Static_Array(std::initializer_list<T> list) {
+			std::size_t elem_count = list.size();
+			if(elem_count > Capacity) elem_count = Capacity;
+			if constexpr(std::is_trivially_copyable_v<T>) {
+				std::memcpy(data,list.begin(),elem_count * sizeof(T));
+			}
+			else for(std::size_t i = 0;i < elem_count;i += 1) {
+				data[i] = list.begin()[i];
+			}
+			length = elem_count;
+		}
 
 		bool push_back(const T& value) {
 			if((length + 1) > Capacity) return false;

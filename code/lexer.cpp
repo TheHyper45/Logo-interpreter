@@ -53,6 +53,7 @@ namespace logo {
 			case Token_Type::Logical_Not:
 			case Token_Type::Ampersand:
 			case Token_Type::Caret:
+			case Token_Type::Apostrophe:
 				return true;
 			default: return false;
 		}
@@ -194,6 +195,9 @@ namespace logo {
 			token.type = Token_Type::Bool_Literal;
 			token.bool_value = false;
 		}
+		else if(std::strcmp(token.string.begin_ptr,"->") == 0) {
+			token.type = Token_Type::Arrow;
+		}
 		else if(lexer.token_status == Lexing_Token_Status::Identifier) {
 			token.type = Token_Type::Identifier;
 		}
@@ -266,6 +270,12 @@ namespace logo {
 		}
 		else if(lexer.last_token_code_point == ':') {
 			token.type = Token_Type::Colon;
+		}
+		else if(lexer.last_token_code_point == '.') {
+			token.type = Token_Type::Dot;
+		}
+		else if(lexer.last_token_code_point == '\'') {
+			token.type = Token_Type::Apostrophe;
 		}
 		else if(lexer.last_token_code_point == '+') {
 			token.type = Token_Type::Plus;
@@ -410,6 +420,9 @@ namespace logo {
 				return logo::append_code_point_to_token(code_point);
 			}
 			return logo::finish_token_then_append(code_point);
+		}
+		if(lexer.last_token_code_point == '-' && code_point == '>') {
+			return logo::append_code_point_to_token(code_point);
 		}
 		if(logo::is_one_of(lexer.last_token_code_point,U'+',U'-',U'*',U'/',U'^',U'%',U'=',U'!',U'<',U'>')) {
 			if(code_point == '=') {

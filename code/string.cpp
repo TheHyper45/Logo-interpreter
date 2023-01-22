@@ -114,169 +114,220 @@ namespace logo {
 	String_Format_Arg make_string_format_arg(std::size_t value) {
 		String_Format_Arg arg{};
 		arg.type = String_Format_Arg::Type::Size_T;
-		arg.value.size_t_v = value;
+		arg.size_t_v = value;
 		return arg;
 	}
 	String_Format_Arg make_string_format_arg(std::uint_least32_t value) {
 		String_Format_Arg arg{};
 		arg.type = String_Format_Arg::Type::Uint_Least_32_T;
-		arg.value.uint_least32_t_v = value;
+		arg.uint_least32_t_v = value;
 		return arg;
 	}
 	String_Format_Arg make_string_format_arg(String_View value) {
 		String_Format_Arg arg{};
 		arg.type = String_Format_Arg::Type::String_View;
-		arg.value.string_view_v = value;
+		arg.string_view_v = value;
 		return arg;
 	}
 	String_Format_Arg make_string_format_arg(char value) {
 		String_Format_Arg arg{};
 		arg.type = String_Format_Arg::Type::Char;
-		arg.value.char_v = value;
+		arg.char_v = value;
 		return arg;
 	}
 	String_Format_Arg make_string_format_arg(char32_t value) {
 		String_Format_Arg arg{};
 		arg.type = String_Format_Arg::Type::Char32_T;
-		arg.value.char32_t_v = value;
+		arg.char32_t_v = value;
 		return arg;
 	}
 	String_Format_Arg make_string_format_arg(double value) {
 		String_Format_Arg arg{};
 		arg.type = String_Format_Arg::Type::Double;
-		arg.value.double_v = value;
+		arg.double_v = value;
 		return arg;
 	}
 	String_Format_Arg make_string_format_arg(std::int32_t value) {
 		String_Format_Arg arg{};
 		arg.type = String_Format_Arg::Type::Int32;
-		arg.value.int32_v = value;
+		arg.int32_v = value;
 		return arg;
 	}
 	String_Format_Arg make_string_format_arg(std::int64_t value) {
 		String_Format_Arg arg{};
 		arg.type = String_Format_Arg::Type::Int64;
-		arg.value.int64_v = value;
+		arg.int64_v = value;
 		return arg;
 	}
 	String_Format_Arg make_string_format_arg(bool value) {
 		String_Format_Arg arg{};
 		arg.type = String_Format_Arg::Type::Bool;
-		arg.value.bool_v = value;
+		arg.bool_v = value;
 		return arg;
 	}
 	String_Format_Arg make_string_format_arg(const char* value) {
 		String_Format_Arg arg{};
 		arg.type = String_Format_Arg::Type::String_View;
-		arg.value.string_view_v = String_View(value,std::strlen(value));
+		arg.string_view_v = String_View(value,std::strlen(value));
 		return arg;
 	}
 
-	std::size_t _format_into(bool(*callback)(char32_t,const void*),const void* callback_arg,String_View format,Array_View<String_Format_Arg> args) {
-		std::size_t count = 0;
-		std::size_t current_arg_index = 0;
+	String_Format_Result _format_into(bool(*callback)(char32_t,const void*),const void* callback_arg,String_View format,Array_View<String_Format_Arg> args) {
+		String_Format_Result format_result{};
+		format_result.count_of_args = args.length;
 		for(auto c : format) {
 			if(c == '%') {
-				if(current_arg_index >= args.length) return count;
-				const String_Format_Arg& arg = args[current_arg_index];
+				if(format_result.count_of_arguments_processed >= args.length) return format_result;
+				const String_Format_Arg& arg = args[format_result.count_of_arguments_processed];
 				switch(arg.type) {
 					case String_Format_Arg::Type::Size_T: {
 						char buffer[32]{};
-						int result = std::snprintf(buffer,sizeof(buffer) - 1,"%zu",arg.value.size_t_v);
-						if(result < 0) return count;
+						int result = std::snprintf(buffer,sizeof(buffer) - 1,"%zu",arg.size_t_v);
+						if(result < 0) {
+							format_result.external_failure = true;
+							return format_result;
+						}
 						for(auto i : Range(result)) {
-							if(!callback(static_cast<char32_t>(buffer[i]),callback_arg)) return count;
-							count += 1;
+							if(!callback(static_cast<char32_t>(buffer[i]),callback_arg)) {
+								format_result.external_failure = true;
+								return format_result;
+							}
+							format_result.characters_written += 1;
 						}
 						break;
 					}
 					case String_Format_Arg::Type::Uint_Least_32_T: {
 						char buffer[32]{};
-						int result = std::snprintf(buffer,sizeof(buffer) - 1,"%" PRIuLEAST32,arg.value.uint_least32_t_v);
-						if(result < 0) return count;
+						int result = std::snprintf(buffer,sizeof(buffer) - 1,"%" PRIuLEAST32,arg.uint_least32_t_v);
+						if(result < 0) {
+							format_result.external_failure = true;
+							return format_result;
+						}
 						for(auto i : Range(result)) {
-							if(!callback(static_cast<char32_t>(buffer[i]),callback_arg)) return count;
-							count += 1;
+							if(!callback(static_cast<char32_t>(buffer[i]),callback_arg)) {
+								format_result.external_failure = true;
+								return format_result;
+							}
+							format_result.characters_written += 1;
 						}
 						break;
 					}
 					case String_Format_Arg::Type::String_View: {
-						for(auto arg_c : arg.value.string_view_v) {
-							if(!callback(arg_c,callback_arg)) return count;
-							count += logo::code_point_byte_length(arg_c);
+						for(auto arg_c : arg.string_view_v) {
+							if(!callback(arg_c,callback_arg)) {
+								format_result.external_failure = true;
+								return format_result;
+							}
+							format_result.characters_written += logo::code_point_byte_length(arg_c);
 						}
 						break;
 					}
 					case String_Format_Arg::Type::Char: {
 						char buffer[32]{};
-						int result = std::snprintf(buffer,sizeof(buffer) - 1,"%d",arg.value.char_v);
-						if(result < 0) return count;
+						int result = std::snprintf(buffer,sizeof(buffer) - 1,"%d",arg.char_v);
+						if(result < 0) {
+							format_result.external_failure = true;
+							return format_result;
+						}
 						for(auto i : Range(result)) {
-							if(!callback(static_cast<char32_t>(buffer[i]),callback_arg)) return count;
-							count += 1;
+							if(!callback(static_cast<char32_t>(buffer[i]),callback_arg)) {
+								format_result.external_failure = true;
+								return format_result;
+							}
+							format_result.characters_written += 1;
 						}
 						break;
 					}
 					case String_Format_Arg::Type::Char32_T: {
-						if(!callback(arg.value.char32_t_v,callback_arg)) return count;
-						count += logo::code_point_byte_length(arg.value.char32_t_v);
+						if(!callback(arg.char32_t_v,callback_arg)) {
+							format_result.external_failure = true;
+							return format_result;
+						}
+						format_result.characters_written += logo::code_point_byte_length(arg.char32_t_v);
 						break;
 					}
 					case String_Format_Arg::Type::Double: {
 						char buffer[128]{};
-						int result = std::snprintf(buffer,sizeof(buffer) - 1,"%f",arg.value.double_v);
-						if(result < 0) return count;
+						int result = std::snprintf(buffer,sizeof(buffer) - 1,"%f",arg.double_v);
+						if(result < 0) {
+							format_result.external_failure = true;
+							return format_result;
+						}
 						for(auto i : Range(result)) {
-							if(!callback(static_cast<char32_t>(buffer[i]),callback_arg)) return count;
-							count += 1;
+							if(!callback(static_cast<char32_t>(buffer[i]),callback_arg)) {
+								format_result.external_failure = true;
+								return format_result;
+							}
+							format_result.characters_written += 1;
 						}
 						break;
 					}
 					case String_Format_Arg::Type::Int32: {
 						char buffer[32]{};
-						int result = std::snprintf(buffer,sizeof(buffer) - 1,"%" PRId32,arg.value.int32_v);
-						if(result < 0) return count;
+						int result = std::snprintf(buffer,sizeof(buffer) - 1,"%" PRId32,arg.int32_v);
+						if(result < 0) {
+							format_result.external_failure = true;
+							return format_result;
+						}
 						for(auto i : Range(result)) {
-							if(!callback(static_cast<char32_t>(buffer[i]),callback_arg)) return count;
-							count += 1;
+							if(!callback(static_cast<char32_t>(buffer[i]),callback_arg)) {
+								format_result.external_failure = true;
+								return format_result;
+							}
+							format_result.characters_written += 1;
 						}
 						break;
 					}
 					case String_Format_Arg::Type::Int64: {
 						char buffer[32]{};
-						int result = std::snprintf(buffer,sizeof(buffer) - 1,"%" PRId64,arg.value.int64_v);
-						if(result < 0) return count;
+						int result = std::snprintf(buffer,sizeof(buffer) - 1,"%" PRId64,arg.int64_v);
+						if(result < 0) {
+							format_result.external_failure = true;
+							return format_result;
+						}
 						for(auto i : Range(result)) {
-							if(!callback(static_cast<char32_t>(buffer[i]),callback_arg)) return count;
-							count += 1;
+							if(!callback(static_cast<char32_t>(buffer[i]),callback_arg)) {
+								format_result.external_failure = true;
+								return format_result;
+							}
+							format_result.characters_written += 1;
 						}
 						break;
 					}
 					case String_Format_Arg::Type::Bool: {
-						if(arg.value.bool_v) {
+						if(arg.bool_v) {
 							char buffer[] = "true";
 							for(auto i : Range(sizeof(buffer) - 1)) {
-								if(!callback(static_cast<char32_t>(buffer[i]),callback_arg)) return count;
-								count += 1;
+								if(!callback(static_cast<char32_t>(buffer[i]),callback_arg)) {
+									format_result.external_failure = true;
+									return format_result;
+								}
+								format_result.characters_written += 1;
 							}
 						}
 						else {
 							char buffer[] = "false";
 							for(auto i : Range(sizeof(buffer) - 1)) {
-								if(!callback(static_cast<char32_t>(buffer[i]),callback_arg)) return count;
-								count += 1;
+								if(!callback(static_cast<char32_t>(buffer[i]),callback_arg)) {
+									format_result.external_failure = true;
+									return format_result;
+								}
+								format_result.characters_written += 1;
 							}
 						}
 						break;
 					}
 				}
-				current_arg_index += 1;
+				format_result.count_of_arguments_processed += 1;
 			}
 			else {
-				if(!callback(c,callback_arg)) return count;
-				count += 1;
+				if(!callback(c,callback_arg)) {
+					format_result.external_failure = true;
+					return format_result;
+				}
+				format_result.characters_written += 1;
 			}
 		}
-		return count;
+		return format_result;
 	}
 }

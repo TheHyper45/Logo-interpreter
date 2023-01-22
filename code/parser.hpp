@@ -12,6 +12,7 @@ namespace logo {
 	struct Ast_Unary_Prefix_Operator;
 	struct Ast_Function_Call;
 	struct Ast_Statement;
+	struct Ast_Expression;
 
 	enum struct Ast_Value_Type {
 		None,
@@ -34,22 +35,31 @@ namespace logo {
 		Ast_Value() : type(),line_index(),identfier_name() {}
 	};
 
+	struct Ast_Array_Access {
+		Ast_Expression* left;
+		Ast_Expression* right;
+		std::size_t line_index;
+	};
+
 	enum struct Ast_Expression_Type {
 		None,
 		Value,
 		Binary_Operator,
 		Unary_Prefix_Operator,
-		Function_Call
+		Function_Call,
+		Array_Access
 	};
 	struct Ast_Expression {
 		Ast_Expression_Type type;
+		bool is_parenthesised;
 		union {
 			Ast_Value value;
 			Ast_Binary_Operator* binary_operator;
 			Ast_Unary_Prefix_Operator* unary_prefix_operator;
 			Ast_Function_Call* function_call;
+			Ast_Array_Access* array_access;
 		};
-		Ast_Expression() : type(),value() {}
+		Ast_Expression() : type(),is_parenthesised(),value() {}
 	};
 
 	enum struct Ast_Binary_Operator_Type {
@@ -80,7 +90,8 @@ namespace logo {
 		Minus,
 		Logical_Not,
 		Reference,
-		Dereference
+		Dereference,
+		Parent_Scope_Access
 	};
 	struct Ast_Unary_Prefix_Operator {
 		Ast_Unary_Prefix_Operator_Type type;
@@ -105,10 +116,9 @@ namespace logo {
 	};
 	struct Ast_Assignment {
 		Ast_Assignment_Type type;
-		String_View name;
-		Ast_Expression value_expr;
+		Ast_Expression lvalue_expr;
+		Ast_Expression rvalue_expr;
 		std::size_t line_index;
-		bool is_through_reference;
 	};
 
 	struct Ast_Declaration {
@@ -127,14 +137,34 @@ namespace logo {
 		Heap_Array<Ast_Statement> body_statements;
 	};
 
+	struct Ast_For_Statement {
+		String_View iterator_identifier;
+		Ast_Expression start_expr;
+		Ast_Expression end_expr;
+		Heap_Array<Ast_Statement> body_statements;
+	};
+
+	struct Ast_Function_Definition {
+		String_View name;
+		Heap_Array<String_View> function_arguments;
+		Heap_Array<Ast_Statement> body_statements;
+	};
+
+	struct Ast_Return_Statement {
+		Ast_Expression* return_value;
+	};
+
 	enum struct Ast_Statement_Type {
 		Expression,
 		Declaration,
 		Assignment,
 		If_Statement,
 		While_Statement,
+		For_Statement,
 		Break_Statement,
-		Continue_Statement
+		Continue_Statement,
+		Function_Definition,
+		Return_Statement
 	};
 	struct Ast_Statement {
 		Ast_Statement_Type type;
@@ -144,6 +174,9 @@ namespace logo {
 			Ast_Assignment assignment;
 			Ast_If_Statement if_statement;
 			Ast_While_Statement while_statement;
+			Ast_For_Statement for_statement;
+			Ast_Function_Definition function_definition;
+			Ast_Return_Statement return_statement;
 		};
 		std::size_t line_index;
 		Ast_Statement() : type(),expression(),line_index() {}

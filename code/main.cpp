@@ -127,6 +127,9 @@ namespace logo {
 				else if(expression.unary_prefix_operator->type == Ast_Unary_Prefix_Operator_Type::Dereference) {
 					logo::print("^\n");
 				}
+				else if(expression.unary_prefix_operator->type == Ast_Unary_Prefix_Operator_Type::Parent_Scope_Access) {
+					logo::print("'\n");
+				}
 				logo::print_ast_expression(*expression.unary_prefix_operator->child,depth + 1);
 				break;
 			}
@@ -186,6 +189,16 @@ namespace logo {
 				}
 				break;
 			}
+			case Ast_Expression_Type::Array_Access: {
+				logo::print("Array access:\n");
+				logo::print_n_spaces(depth);
+				logo::print("Of\n");
+				logo::print_ast_expression(*expression.array_access->left,depth + 1);
+				logo::print_n_spaces(depth);
+				logo::print("By\n");
+				logo::print_ast_expression(*expression.array_access->right,depth + 1);
+				break;
+			}
 			default: logo::unreachable();
 		}
 	}
@@ -195,16 +208,20 @@ namespace logo {
 		switch(statement.type) {
 			case Ast_Statement_Type::Break_Statement: logo::print("Break statement\n"); break;
 			case Ast_Statement_Type::Continue_Statement: logo::print("Continue statement\n"); break;
+			case Ast_Statement_Type::Return_Statement: {
+				logo::print("Return\n");
+				if(statement.return_statement.return_value) {
+					logo::print_ast_expression(*statement.return_statement.return_value,depth + 1);
+				}
+				break;
+			}
 			case Ast_Statement_Type::Declaration: {
 				logo::print("Declaration % =\n",statement.declaration.name);
 				logo::print_ast_expression(statement.declaration.initial_value_expr,depth + 1);
 				break;
 			}
 			case Ast_Statement_Type::Assignment: {
-				if(statement.assignment.is_through_reference) {
-					logo::print("Assignment ^% ",statement.assignment.name);
-				}
-				else logo::print("Assignment % ",statement.assignment.name);
+				logo::print("Assignment ");
 				switch(statement.assignment.type) {
 					case Ast_Assignment_Type::Assignment: logo::print("=\n"); break;
 					case Ast_Assignment_Type::Compound_Plus: logo::print("+=\n"); break;
@@ -215,7 +232,12 @@ namespace logo {
 					case Ast_Assignment_Type::Compound_Exponentiate: logo::print("^=\n"); break;
 					default: logo::unreachable();
 				}
-				logo::print_ast_expression(statement.assignment.value_expr,depth + 1);
+				logo::print_n_spaces(depth);
+				logo::print("Lvalue\n");
+				logo::print_ast_expression(statement.assignment.lvalue_expr,depth + 1);
+				logo::print_n_spaces(depth);
+				logo::print("Rvalue\n");
+				logo::print_ast_expression(statement.assignment.rvalue_expr,depth + 1);
 				break;
 			}
 			case Ast_Statement_Type::If_Statement: {
@@ -249,6 +271,38 @@ namespace logo {
 				}
 				break;
 			}
+			case Ast_Statement_Type::For_Statement: {
+				logo::print("For %\n",statement.for_statement.iterator_identifier);
+				logo::print_n_spaces(depth);
+				logo::print("Lower bound\n");
+				logo::print_ast_expression(statement.for_statement.start_expr,depth + 1);
+				logo::print_n_spaces(depth);
+				logo::print("Upper bound\n");
+				logo::print_ast_expression(statement.for_statement.end_expr,depth + 1);
+				
+				if(statement.for_statement.body_statements.length > 0) {
+					logo::print_n_spaces(depth);
+					logo::print("Repeat\n");
+					for(const auto& inner_statement : statement.for_statement.body_statements) {
+						logo::print_ast_statement(inner_statement,depth + 1);
+					}
+				}
+				break;
+			}
+			case Ast_Statement_Type::Function_Definition: {
+				logo::print("Function %(",statement.function_definition.name);
+				for(std::size_t i = 0;i < statement.function_definition.function_arguments.length;i += 1) {
+					logo::print("%",statement.function_definition.function_arguments[i]);
+					if((i + 1) < statement.function_definition.function_arguments.length) logo::print(",");
+				}
+				logo::print(")\n");
+				if(statement.function_definition.body_statements.length > 0) {
+					for(const auto& inner_statement : statement.function_definition.body_statements) {
+						logo::print_ast_statement(inner_statement,depth + 1);
+					}
+				}
+				break;
+			}
 			case Ast_Statement_Type::Expression: {
 				logo::print("Expression\n");
 				logo::print_ast_expression(statement.expression,depth + 1);
@@ -259,14 +313,19 @@ namespace logo {
 	}
 }
 
-int main() {
+int main(int arg_count,char** args) {
 	if(!logo::debug_init()) {
 		logo::eprint("%\n",logo::get_reported_error());
 		return 1;
 	}
 	defer[]{logo::debug_term();};
 
-	auto [file_bytes,file_opened] = logo::read_file("./script0.txt");
+	if(arg_count < 2) {
+		logo::print("Usage: logo [input_file_name]\n");
+		return 0;
+	}
+
+	auto [file_bytes,file_opened] = logo::read_file(logo::String_View(args[1]));
 	if(!file_opened) {
 		logo::eprint("%\n",logo::get_reported_error());
 		return 1;
