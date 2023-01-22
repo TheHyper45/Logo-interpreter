@@ -4,7 +4,7 @@
 #include "canvas.hpp"
 
 namespace logo {
-	bool Canvas::init(std::int32_t w,std::int32_t h) {
+	bool Canvas::init(std::int32_t w,std::int32_t h,Color background_color) {
 		width = w;
 		height = h;
 		pos_x = width / 2.0f;
@@ -12,7 +12,7 @@ namespace logo {
 		rot = 0.0;
 		is_pen_down = true;
 		pen_color = Color{0,0,0};
-		if(!pixels.resize(static_cast<std::size_t>(width) * height,Color{255,255,255})) {
+		if(!pixels.resize(static_cast<std::size_t>(width) * height,background_color)) {
 			Report_Error("Couldn't allocate % bytes of memory.",width * height * sizeof(pixels[0]));
 			return false;
 		}

@@ -411,6 +411,7 @@ namespace logo {
 					}
 				}
 
+				//This function is hardcoded because the interpreter doesn't support variadic functions.
 				if(std::strcmp(expression.function_call->name.begin_ptr,"print") == 0) {
 					if(expression.function_call->arguments.length == 0) {
 						logo::report_interpreter_error(expression.function_call->line_index,"Function 'print' takes at least 1 argument.");
@@ -843,16 +844,48 @@ namespace logo {
 	[[nodiscard]] static Option<Interpreter_Value> interpreter_builtin_function_init(Interpreter_Context* context,std::size_t line_index,Array_View<Interpreter_Value> values) {
 		const auto& arg0 = values[0];
 		if(arg0.int_v > std::numeric_limits<std::int32_t>::max()) {
-			logo::report_interpreter_error(line_index,"Argument 1 to function 'init' must be an intger from interval (0,%].",std::numeric_limits<std::int32_t>::max());
+			logo::report_interpreter_error(line_index,"Argument 0 to function 'init' must be an intger from interval (0,%].",std::numeric_limits<std::int32_t>::max());
 			return {};
 		}
 		const auto& arg1 = values[1];
 		if(arg1.int_v > std::numeric_limits<std::int32_t>::max()) {
-			logo::report_interpreter_error(line_index,"Argument 2 to function 'init' must be an intger from interval (0,%].",std::numeric_limits<std::int32_t>::max());
+			logo::report_interpreter_error(line_index,"Argument 1 to function 'init' must be an intger from interval (0,%].",std::numeric_limits<std::int32_t>::max());
 			return {};
 		}
 
 		if(!context->canvas.init(arg0.int_v,arg1.int_v)) return {};
+		Interpreter_Value result{};
+		result.type = Interpreter_Value_Type::Void;
+		return result;
+	}
+
+	[[nodiscard]] static Option<Interpreter_Value> interpreter_builtin_function_init_with_colors(Interpreter_Context* context,std::size_t line_index,Array_View<Interpreter_Value> values) {
+		const auto& arg0 = values[0];
+		if(arg0.int_v > std::numeric_limits<std::int32_t>::max()) {
+			logo::report_interpreter_error(line_index,"Argument 0 to function 'init' must be an intger from interval (0,%].",std::numeric_limits<std::int32_t>::max());
+			return {};
+		}
+		const auto& arg1 = values[1];
+		if(arg1.int_v > std::numeric_limits<std::int32_t>::max()) {
+			logo::report_interpreter_error(line_index,"Argument 1 to function 'init' must be an intger from interval (0,%].",std::numeric_limits<std::int32_t>::max());
+			return {};
+		}
+
+		if(values[2].int_v < 0 || values[2].int_v > 255) {
+			logo::report_interpreter_error(line_index,"Argument 2 to function 'init' must be from range [0,255].");
+			return {};
+		}
+		if(values[3].int_v < 0 || values[3].int_v > 255) {
+			logo::report_interpreter_error(line_index,"Argument 3 to function 'init' must be from range [0,255].");
+			return {};
+		}
+		if(values[4].int_v < 0 || values[4].int_v > 255) {
+			logo::report_interpreter_error(line_index,"Argument 4 to function 'init' must be from range [0,255].");
+			return {};
+		}
+
+		Color background_color = {static_cast<std::uint8_t>(values[2].int_v),static_cast<std::uint8_t>(values[3].int_v),static_cast<std::uint8_t>(values[4].int_v)};
+		if(!context->canvas.init(arg0.int_v,arg1.int_v,background_color)) return {};
 		Interpreter_Value result{};
 		result.type = Interpreter_Value_Type::Void;
 		return result;
@@ -953,7 +986,19 @@ namespace logo {
 		return result;
 	}
 
-	[[nodiscard]] static Option<Interpreter_Value> interpreter_builtin_function_pencolor(Interpreter_Context* context,std::size_t,Array_View<Interpreter_Value> values) {
+	[[nodiscard]] static Option<Interpreter_Value> interpreter_builtin_function_pencolor(Interpreter_Context* context,std::size_t line_index,Array_View<Interpreter_Value> values) {
+		if(values[0].int_v < 0 || values[0].int_v > 255) {
+			logo::report_interpreter_error(line_index,"Argument 0 to function 'pencolor' must be from range [0,255].");
+			return {};
+		}
+		if(values[1].int_v < 0 || values[1].int_v > 255) {
+			logo::report_interpreter_error(line_index,"Argument 1 to function 'pencolor' must be from range [0,255].");
+			return {};
+		}
+		if(values[2].int_v < 0 || values[2].int_v > 255) {
+			logo::report_interpreter_error(line_index,"Argument 2 to function 'pencolor' must be from range [0,255].");
+			return {};
+		}
 		context->canvas.pen_color = {static_cast<std::uint8_t>(values[0].int_v),static_cast<std::uint8_t>(values[1].int_v),static_cast<std::uint8_t>(values[2].int_v)};
 		Interpreter_Value result{};
 		result.type = Interpreter_Value_Type::Void;
@@ -986,7 +1031,7 @@ namespace logo {
 		Interpreter_Value result{};\
 		result.type = Interpreter_Value_Type::Float;\
 		const auto& arg = values[0];\
-		if(arg.type == Interpreter_Value_Type::Int) result.float_v = (FUNC)(arg.int_v);\
+		if(arg.type == Interpreter_Value_Type::Int) result.float_v = static_cast<double>((FUNC)(arg.int_v));\
 		else result.float_v = (FUNC)(arg.float_v);\
 		return result;\
 	}})) {\
@@ -1055,6 +1100,11 @@ namespace logo {
 			return false;
 		}
 		if(!context.builtin_functions.push_back(Interpreter_Builtin_Function{"init",{Interpreter_Value_Type::Int,Interpreter_Value_Type::Int},logo::interpreter_builtin_function_init})) {
+			Report_Error("Couldn't allocate % bytes of memory.",sizeof(Interpreter_Builtin_Function));
+			return false;
+		}
+		if(!context.builtin_functions.push_back(Interpreter_Builtin_Function{"init",{Interpreter_Value_Type::Int,Interpreter_Value_Type::Int,
+												Interpreter_Value_Type::Int,Interpreter_Value_Type::Int,Interpreter_Value_Type::Int},logo::interpreter_builtin_function_init_with_colors})) {
 			Report_Error("Couldn't allocate % bytes of memory.",sizeof(Interpreter_Builtin_Function));
 			return false;
 		}

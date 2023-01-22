@@ -16,7 +16,7 @@ namespace logo {
 		Color pen_color;
 		Heap_Array<Color> pixels;
 
-		bool init(std::int32_t w,std::int32_t h);
+		bool init(std::int32_t w,std::int32_t h,Color background_color = {255,255,255});
 		void destroy();
 		bool save_as_bitmap(String_View file_path);
 		void move_forward(double steps);

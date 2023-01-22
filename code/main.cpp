@@ -320,6 +320,8 @@ int main(int arg_count,char** args) {
 	}
 	defer[]{logo::debug_term();};
 
+	logo::print("The MIT License (MIT)\nCopyright © 2023 Dawid Michalak (TheHyper45)\n\n");
+
 	if(arg_count < 2) {
 		logo::print("Usage: logo [input_file_name]\n");
 		return 0;
