@@ -176,9 +176,9 @@ buzz
 
 ## TODO
 
-This is a list of features that I wanted to implement but couldn't because of the lack of time.
+This is a list of features that I wanted to implement but couldn't because of the lack of time. I'm not sure if I'm going to implement these features in the future.
 
-- Arrays (the parse correctly but the interpreter doesn't recognize them)
+- Arrays (they parse correctly but the interpreter doesn't recognize them)
 - Proper strings and string manipulation functions
 - Structs
 - File I/O

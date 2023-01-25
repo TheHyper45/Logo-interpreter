@@ -373,12 +373,15 @@ namespace logo {
 				continue;
 			}
 			switch(root->value.type) {
-				case Ast_Value_Type::Int_Literal: logo::report_parser_error("Missing a binary operator between '%' and '('.",root->value.int_value); return false;
-				case Ast_Value_Type::Float_Literal: logo::report_parser_error("Missing a binary operator between '%' and '('.",root->value.float_value); return false;
-				case Ast_Value_Type::Bool_Literal: logo::report_parser_error("Missing a binary operator between '%' and '('.",root->value.bool_value); return false;
-				case Ast_Value_Type::String_Literal: logo::report_parser_error("Missing a binary operator between '%' and '('.",root->value.string_value); return false;
-				case Ast_Value_Type::Identifier: logo::report_parser_error("Missing a binary operator between '%' and '('.",root->value.identfier_name); return false;
-				default: logo::unreachable();
+				case Ast_Value_Type::Int_Literal: logo::report_parser_error("Invalid token after '%'.",root->value.int_value); return false;
+				case Ast_Value_Type::Float_Literal: logo::report_parser_error("Invalid token after '%''.",root->value.float_value); return false;
+				case Ast_Value_Type::Bool_Literal: logo::report_parser_error("Invalid token after '%'.",root->value.bool_value); return false;
+				case Ast_Value_Type::String_Literal: logo::report_parser_error("Invalid token after '%'.",root->value.string_value); return false;
+				case Ast_Value_Type::Identifier: logo::report_parser_error("Invalid token after '%'.",root->value.identfier_name); return false;
+				default: {
+					logo::report_parser_error("Invalid token after ')'.");
+					return false;
+				}
 			}
 		}
 	}
