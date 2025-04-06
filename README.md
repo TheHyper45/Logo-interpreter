@@ -4,9 +4,9 @@ This is an interpreter of a Logo-like programming language written in C++ that I
 
 ## Features
 
-This program takes a script written in the custom Logo-like programming language and eventually outputs a bitmap that contains the path travelled by the virtual turtle as defined in the script.
+This program takes a script written in the custom Logo-like programming language and outputs a bitmap that contains the path travelled by the virtual turtle as defined in the script.
 
-### Features supports by the programming language
+### Features supported by the programming language:
 - Variables
 - References
 - User-defined and built-in functions
@@ -176,7 +176,7 @@ buzz
 
 ## TODO
 
-This is a list of features that I wanted to implement but couldn't because of the lack of time. I'm not sure if I'm going to implement these features in the future.
+This is a list of features that I wanted to implement but couldn't because of lack of time. I'm not sure if I'm going to implement these features in the future.
 
 - Arrays (they parse correctly but the interpreter doesn't recognize them)
 - Proper strings and string manipulation functions
